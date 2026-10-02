@@ -193,7 +193,7 @@ class SankhyaOps:
         return {"top": top or self.cfg.top_orcamento, "aceitas": aceitas, "testadas": len(tipos),
                 "motivos_recusa": {k: v[:12] for k, v in motivos.items()}}
 
-    def preco_bruto(self, codigo_cliente: int, codigo_produto: int, tipneg: int, top: int) -> dict:
+    def preco_bruto(self, codigo_cliente: int, codigo_produto: int, tipneg: int, top: int, data: str | None = None) -> dict:
         """Só leitura: devolve a resposta crua do Sankhya para conferir o formato. Rota /admin/preco-bruto."""
         c = self.cfg
         vols = self.c.select_fixo(f"SELECT CODVOL FROM TGFPRO WHERE CODPROD = {int(codigo_produto)}")
@@ -201,7 +201,7 @@ class SankhyaOps:
             "codigoEmpresa": c.empresa_padrao, "codigoCliente": int(codigo_cliente),
             "codigoVendedor": c.codvend_agente, "codigoTipoOperacao": int(top),
             "codigoTipoNegociacao": int(tipneg),
-            "dataNegociacao": dt.date.today().strftime("%d/%m/%Y"),
+            "dataNegociacao": data or dt.date.today().strftime("%d/%m/%Y"),
             "produtos": [{"codigoProduto": int(codigo_produto), "quantidade": 1,
                           "codigoLocalEstoque": c.local_estoque_padrao, "controle": " ",
                           "unidade": (vols[0]["CODVOL"] if vols else "UN")}],
@@ -210,3 +210,21 @@ class SankhyaOps:
             return self.c.rest_post_leitura("/v1/precos/contextualizado", corpo)
         except SankhyaError as e:
             return {"erro": str(e)[:300], "corpo": str(e.body)[:400]}
+
+    def preco_tabela(self, codigo_produto: int, tabela: int) -> dict:
+        """Só leitura: preços do produto em cada versão da tabela (TGFTAB/TGFEXC). Rota /admin/preco-tabela."""
+        cod, tab = int(codigo_produto), int(tabela)
+        out: dict = {}
+        consultas = {
+            "versoes_da_tabela": f"SELECT NUTAB, CODTAB, DTVIGOR FROM (SELECT NUTAB, CODTAB, DTVIGOR FROM TGFTAB "
+                                 f"WHERE CODTAB = {tab} ORDER BY DTVIGOR DESC) WHERE ROWNUM <= 5",
+            "preco_do_produto": f"SELECT NUTAB, CODPROD, VLRVENDA FROM TGFEXC WHERE CODPROD = {cod} AND NUTAB IN "
+                                f"(SELECT NUTAB FROM TGFTAB WHERE CODTAB = {tab}) AND ROWNUM <= 10",
+            "produto_preco_base": f"SELECT CODPROD, DESCRPROD FROM TGFPRO WHERE CODPROD = {cod}",
+        }
+        for nome, sql in consultas.items():
+            try:
+                out[nome] = self.c.select_fixo(sql)
+            except Exception as e:
+                out[nome] = {"erro": str(e)[:300]}
+        return out
