@@ -26,7 +26,10 @@ class Config:
     max_itens: int = 20
     quantidade_max_item: float = 999.0
     db_path: str = "/data/agente.db"
-    versao: str = "0.1.1"
+    anthropic_api_key: str = ""
+    agente_modelo: str = "claude-sonnet-5-5"
+    agente_limite_diario: int = 3000
+    versao: str = "0.2.0"
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -47,4 +50,7 @@ class Config:
             valor_max_pedido=float(e.get("VALOR_MAX_PEDIDO", 2000)),
             max_itens=int(e.get("MAX_ITENS", 20)),
             db_path=e.get("DB_PATH", "/data/agente.db"),
+            anthropic_api_key=e.get("ANTHROPIC_API_KEY", ""),
+            agente_modelo=e.get("AGENTE_MODELO", "claude-sonnet-5-5") or "claude-sonnet-5-5",
+            agente_limite_diario=int(e.get("AGENTE_LIMITE_DIARIO", 3000) or 3000),
         )

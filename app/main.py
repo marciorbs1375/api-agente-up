@@ -1,17 +1,18 @@
 """API do agente vendedor. Contrato: references/api-agente.md"""
 import hmac
+import threading
 import time
 from typing import Callable
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
+from .agente import Agente
 from .config import Config
 from .estado import Estado
+from .orcamento import VALIDADE_ORCAMENTO_DIAS, calcular_orcamento
 from .regras import (ErroNegocio, Item, conferir_precos, validar_cliente, validar_estoque, validar_itens,
                      validar_total)
-
-VALIDADE_ORCAMENTO_DIAS = 10
 
 
 class ItemIn(BaseModel):
@@ -56,14 +57,25 @@ class PedidoIn(BaseModel):
     texto_confirmacao: str = Field(default="", max_length=500)
 
 
+class MensagemIn(BaseModel):
+    canal: str = Field(max_length=40)
+    conversa_id: str = Field(min_length=1, max_length=120)
+    mensagem_id: str | None = Field(default=None, max_length=120)
+    telefone: str | None = Field(default=None, max_length=30)
+    nome: str | None = Field(default=None, max_length=80)
+    texto: str = Field(min_length=1, max_length=2000)
+
+
 class PendenciaIn(BaseModel):
     conversa_id: str
     tipo: str = Field(max_length=40)
     resumo: str = Field(max_length=2000)
 
 
-def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = time.time) -> FastAPI:
+def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = time.time,
+               transporte_modelo=None) -> FastAPI:
     app = FastAPI(title="Agente vendedor UP", version=cfg.versao)
+    agente_conversa = Agente(cfg, ops, estado, transporte=transporte_modelo, agora=agora)
 
     def exige(chave_certa: str):
         def dep(authorization: str = Header(default="")):
@@ -129,6 +141,30 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
     def preco_tabela(produto: int, tabela: int, _=admin):
         return {"ok": True, "resposta": ops.preco_tabela(produto, tabela)}
 
+    locks: dict[str, threading.Lock] = {}
+    locks_guarda = threading.Lock()
+
+    @app.post("/v1/conversas/mensagem")
+    def conversa(b: MensagemIn, _=agente):
+        """Canal (WellChat, CloudCampaign...) manda a fala do cliente; recebe a resposta ou a decisão de transferir."""
+        chave = f"msg:{b.canal}:{b.conversa_id}:{b.mensagem_id}" if b.mensagem_id else None
+        if chave and (salvo := estado.resposta_salva(chave)):
+            return salvo
+        with locks_guarda:
+            trava = locks.setdefault(f"{b.canal}:{b.conversa_id}", threading.Lock())
+        with trava:  # uma mensagem por vez em cada conversa
+            if estado.desligado():
+                r = ok({"resposta": "O atendimento automático está pausado. Vou chamar alguém da equipe.",
+                        "acao": "transferir_humano", "motivo": "desligado", "orcamento_id": None})
+                estado.salvar_pendencia(b.conversa_id, "desligado", b.texto[:300])
+                estado.registrar_chamada("conversas.mensagem", b.conversa_id, 0, True, "DESLIGADO")
+                return r
+            r = executa("conversas.mensagem", b.conversa_id,
+                        lambda: agente_conversa.conversar(b.conversa_id, b.texto, b.telefone, b.nome))
+            if chave and (r["ok"] or r["erro"]["codigo"] not in ("AGENTE_NAO_CONFIGURADO",)):
+                estado.salvar_resposta(chave, r)
+            return r
+
     @app.post("/v1/produtos/buscar")
     def buscar(b: BuscarIn, _=agente):
         def f():
@@ -174,21 +210,8 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
     @app.post("/v1/orcamentos")
     def orcamento(b: OrcamentoIn, idempotency_key: str | None = Header(default=None), _=agente):
         def f():
-            itens = [Item(i.codigo, i.quantidade) for i in b.itens]
-            validar_itens(itens, cfg.max_itens, cfg.quantidade_max_item)
-            for i in itens:
-                e = ops.estoque(i.codigo, cfg.empresa_padrao)
-                validar_estoque(i.codigo, i.quantidade, e["disponivel"])
-            p = ops.precos(b.codigo_cliente, [(i.codigo, i.quantidade) for i in itens])
-            linhas = [{"codigo": i.codigo, "quantidade": i.quantidade, "preco_unitario": p[i.codigo],
-                       "subtotal": round(p[i.codigo] * i.quantidade, 2)} for i in itens]
-            total = round(sum(x["subtotal"] for x in linhas), 2)
-            validar_total(total, cfg.valor_max_pedido)
-            oid = estado.salvar_orcamento(b.conversa_id, b.codigo_cliente,
-                                          {"itens": linhas, "total": total, "criado": agora()})
-            return {"orcamento_id": oid, "validade_dias": VALIDADE_ORCAMENTO_DIAS, "total": total, "itens": linhas,
-                    "registrado_no_sankhya": False,
-                    "aviso": "Orçamento guardado só aqui. Registro na TOP do Sankhya ainda não habilitado."}
+            return calcular_orcamento(cfg, ops, estado, agora(), b.conversa_id, b.codigo_cliente,
+                                      [(i.codigo, i.quantidade) for i in b.itens])
         return com_idempotencia(idempotency_key, "orcamentos", b.conversa_id, f)
 
     @app.post("/v1/pedidos")

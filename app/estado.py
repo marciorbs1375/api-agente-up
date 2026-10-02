@@ -18,6 +18,10 @@ class Estado:
                 CREATE TABLE IF NOT EXISTS orcamento (id TEXT PRIMARY KEY, conversa TEXT, cliente INTEGER,
                     dados TEXT, criado REAL);
                 CREATE TABLE IF NOT EXISTS pendencia (id TEXT PRIMARY KEY, conversa TEXT, tipo TEXT, resumo TEXT, criado REAL);
+                CREATE TABLE IF NOT EXISTS mensagem (id INTEGER PRIMARY KEY AUTOINCREMENT, conversa TEXT, papel TEXT,
+                    conteudo TEXT, criado REAL);
+                CREATE INDEX IF NOT EXISTS idx_mensagem_conversa ON mensagem (conversa, id);
+                CREATE TABLE IF NOT EXISTS uso_agente (dia TEXT PRIMARY KEY, chamadas INTEGER);
                 CREATE TABLE IF NOT EXISTS chamada (id INTEGER PRIMARY KEY AUTOINCREMENT, acao TEXT, conversa TEXT,
                     ms INTEGER, ok INTEGER, codigo TEXT, criado REAL);
                 """
@@ -71,3 +75,38 @@ class Estado:
     def registrar_chamada(self, acao: str, conversa: str, ms: int, ok: bool, codigo: str) -> None:
         self._exec("INSERT INTO chamada (acao, conversa, ms, ok, codigo, criado) VALUES (?,?,?,?,?,?)",
                    (acao, conversa, ms, 1 if ok else 0, codigo, time.time()))
+
+    # chave genérica (ex.: cliente identificado numa conversa)
+    def ler_chave(self, nome: str):
+        r = self._um("SELECT valor FROM chave WHERE nome=?", (nome,))
+        return r[0] if r else None
+
+    def gravar_chave(self, nome: str, valor: str) -> None:
+        self._exec("INSERT OR REPLACE INTO chave VALUES (?, ?)", (nome, valor))
+
+    # histórico de conversa do agente
+    def historico(self, conversa: str, desde: float, limite: int = 40) -> list[dict]:
+        with self._lock:
+            linhas = self._db.execute(
+                "SELECT papel, conteudo FROM mensagem WHERE conversa=? AND criado>=? ORDER BY id DESC LIMIT ?",
+                (conversa, desde, limite)).fetchall()
+        msgs = [{"role": p, "content": json.loads(c)} for p, c in reversed(linhas)]
+        # começa sempre numa fala de texto do cliente (nunca no meio de uma chamada de ferramenta)
+        while msgs and not (msgs[0]["role"] == "user" and isinstance(msgs[0]["content"], str)):
+            msgs.pop(0)
+        return msgs
+
+    def adicionar_mensagens(self, conversa: str, msgs: list[dict]) -> None:
+        agora = time.time()
+        with self._lock:
+            self._db.executemany("INSERT INTO mensagem (conversa, papel, conteudo, criado) VALUES (?,?,?,?)",
+                                 [(conversa, m["role"], json.dumps(m["content"], ensure_ascii=False), agora) for m in msgs])
+            self._db.commit()
+
+    # limite diário de chamadas ao modelo
+    def uso_do_dia(self, dia: str) -> int:
+        r = self._um("SELECT chamadas FROM uso_agente WHERE dia=?", (dia,))
+        return r[0] if r else 0
+
+    def somar_uso(self, dia: str) -> None:
+        self._exec("INSERT INTO uso_agente VALUES (?, 1) ON CONFLICT(dia) DO UPDATE SET chamadas = chamadas + 1", (dia,))

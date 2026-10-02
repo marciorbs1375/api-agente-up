@@ -21,6 +21,9 @@ services:
       SANKHYA_X_TOKEN: ${SANKHYA_X_TOKEN:-}
       CODVEND_AGENTE: ${CODVEND_AGENTE:-}
       TIPNEG_PADRAO: ${TIPNEG_PADRAO:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AGENTE_MODELO: ${AGENTE_MODELO:-claude-sonnet-5-5}
+      AGENTE_LIMITE_DIARIO: ${AGENTE_LIMITE_DIARIO:-3000}
       DB_PATH: /data/agente.db
     volumes:
       - dados:/data
