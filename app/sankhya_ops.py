@@ -69,24 +69,22 @@ class SankhyaOps:
         }
 
     def identificar_cliente(self, telefone: str | None, documento: str | None) -> dict:
-        campos = ["CODPARC", "NOMEPARC", "ATIVO", "LIMCRED"]  # LIMCRED confirmado no dicionário
+        # Só dígitos entram no SQL (montado em código): sem risco de injeção.
+        base = "SELECT CODPARC, NOMEPARC, ATIVO, LIMCRED FROM TGFPAR WHERE CLIENTE = 'S' AND "
         try:
             if documento:
                 d = _digitos(documento)
                 if len(d) not in (11, 14):
                     raise ErroNegocio("DOCUMENTO_INVALIDO", "Documento inválido. Peça o CPF ou CNPJ de novo.")
-                # CGC_CPF [A CONFIRMAR]
-                linhas = self.c.load_records("Parceiro", campos, "this.CGC_CPF = ? AND this.CLIENTE = ?",
-                                             [("S", d), ("S", "S")], max_pages=1)
+                sql = base + f"CGC_CPF = '{d}' AND ROWNUM <= 3"
             elif telefone:
                 t = _digitos(telefone)[-9:]
                 if len(t) < 8:
                     raise ErroNegocio("TELEFONE_INVALIDO", "Telefone inválido.")
-                # TELEFONE [A CONFIRMAR]
-                linhas = self.c.load_records("Parceiro", campos, "this.TELEFONE LIKE ? AND this.CLIENTE = ?",
-                                             [("S", f"%{t}"), ("S", "S")], max_pages=1)
+                sql = base + f"REGEXP_REPLACE(TELEFONE, '[^0-9]', '') LIKE '%{t}' AND ROWNUM <= 3"
             else:
                 raise ErroNegocio("ENTRADA_INVALIDA", "Informe telefone ou documento.")
+            linhas = self.c.select_fixo(sql)
         except SankhyaError as e:
             self._traduz(e)
         if not linhas:
