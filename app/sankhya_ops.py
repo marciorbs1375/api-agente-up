@@ -114,7 +114,7 @@ class SankhyaOps:
         unidade = {int(v["CODPROD"]): v["CODVOL"] for v in vols}
         corpo = {
             "codigoEmpresa": c.empresa_padrao, "codigoCliente": codigo_cliente,
-            "codigoVendedor": c.codvend_agente, "codigoTipoOperacao": top or c.top_pedido,
+            "codigoVendedor": c.codvend_agente, "codigoTipoOperacao": top or c.top_orcamento,
             "codigoTipoNegociacao": tipneg,
             "dataNegociacao": dt.date.today().strftime("%d/%m/%Y"),  # formato [A CONFIRMAR]
             "produtos": [{"codigoProduto": cod, "quantidade": q, "codigoLocalEstoque": c.local_estoque_padrao,
@@ -125,7 +125,8 @@ class SankhyaOps:
             resp = self.c.rest_post_leitura("/v1/precos/contextualizado", corpo)
         except SankhyaError as e:
             self._traduz(e)
-        out = {int(p["codigoProduto"]): float(p["valor"]) for p in (resp.get("precos") or [])}
+        out = {int(p["codigoProduto"]): float(p["valor"]) for p in (resp.get("produtos") or [])
+               if p.get("valor") not in (None, "") and float(p["valor"]) > 0}  # valor 0 = cliente sem preço
         faltando = [cod for cod, _ in itens if cod not in out]
         if faltando:
             raise ErroNegocio("PRECO_INDISPONIVEL", f"Sem preço para o produto {faltando[0]}.")
@@ -163,6 +164,8 @@ class SankhyaOps:
                                      "(UPPER(APELIDO) LIKE '%WHATS%' OR UPPER(APELIDO) LIKE '%AGENTE%' "
                                      "OR UPPER(APELIDO) LIKE '%ONLINE%' OR UPPER(APELIDO) LIKE '%IA%' "
                                      "OR UPPER(APELIDO) LIKE '%SITE%') AND ROWNUM <= 20",
+            "clientes_com_tabela": "SELECT CODPARC, CODTAB FROM TGFPAR WHERE CLIENTE = 'S' AND ATIVO = 'S' "
+                                   "AND CODTAB IS NOT NULL AND ROWNUM <= 5",
             "vendedores_amostra": "SELECT CODVEND, APELIDO FROM TGFVEN WHERE ATIVO = 'S' AND ROWNUM <= 25",
         }
         for nome, sql in consultas.items():
@@ -187,7 +190,7 @@ class SankhyaOps:
             except Exception as e:
                 chave = (getattr(self, "ultimo_erro", "") or str(e))[-220:]
                 motivos.setdefault(chave, []).append(int(t["CODTIPVENDA"]))
-        return {"top": top or self.cfg.top_pedido, "aceitas": aceitas, "testadas": len(tipos),
+        return {"top": top or self.cfg.top_orcamento, "aceitas": aceitas, "testadas": len(tipos),
                 "motivos_recusa": {k: v[:12] for k, v in motivos.items()}}
 
     def preco_bruto(self, codigo_cliente: int, codigo_produto: int, tipneg: int, top: int) -> dict:
