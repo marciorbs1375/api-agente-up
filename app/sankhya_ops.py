@@ -2,6 +2,7 @@
 import datetime as dt
 import logging
 import re
+import unicodedata
 
 from .regras import ErroNegocio
 from .sankhya_client import SankhyaClient, SankhyaError
@@ -27,21 +28,27 @@ class SankhyaOps:
         raise ErroNegocio("SANKHYA_INDISPONIVEL", "Não consegui consultar o sistema agora.")
 
     def buscar_produtos(self, texto: str, limite: int) -> list[dict]:
-        palavras = [p for p in re.split(r"\s+", texto.strip().upper()) if p][:4]
+        # Só letras/números (sem acento) entram no SQL: impossível injetar comandos.
+        limpo = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode().upper()
+        palavras = [p for p in re.split(r"[^A-Z0-9]+", limpo) if p][:4]
         if not palavras:
             return []
+        limite = max(1, min(int(limite), 20))
+        if len(palavras) == 1 and palavras[0].isdigit() and len(palavras[0]) <= 9:
+            filtro = f"CODPROD = {int(palavras[0])}"
+        else:
+            filtro = "ATIVO = 'S' AND " + " AND ".join(f"UPPER(DESCRPROD) LIKE '%{p}%'" for p in palavras)
+        sql = (
+            "SELECT CODPROD, DESCRPROD, CODVOL FROM "
+            f"(SELECT CODPROD, DESCRPROD, CODVOL FROM TGFPRO WHERE {filtro} ORDER BY DESCRPROD) "
+            f"WHERE ROWNUM <= {limite}"
+        )
         try:
-            if len(palavras) == 1 and palavras[0].isdigit():
-                expr, params = "this.CODPROD = ?", [("I", palavras[0])]
-            else:
-                expr = " AND ".join(["UPPER(this.DESCRPROD) LIKE ?"] * len(palavras)) + " AND this.ATIVO = ?"
-                params = [("S", f"%{p}%") for p in palavras] + [("S", "S")]
-            # campos CODPROD e DESCRPROD confirmados; CODVOL e ATIVO [A CONFIRMAR]
-            linhas = self.c.load_records("Produto", ["CODPROD", "DESCRPROD", "CODVOL"], expr, params, max_pages=1)
+            linhas = self.c.select_fixo(sql)
         except SankhyaError as e:
             self._traduz(e)
         return [{"codigo": int(r["CODPROD"]), "descricao": r["DESCRPROD"], "unidade": r.get("CODVOL")}
-                for r in linhas[:limite]]
+                for r in linhas]
 
     def estoque(self, codigo: int, empresa: int) -> dict:
         try:

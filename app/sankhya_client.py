@@ -178,6 +178,15 @@ class SankhyaClient:
             raise SankhyaError("query_select aceita apenas SELECT simples")
         return self.call("DbExplorerSP.executeQuery", {"sql": sql}, retry_reads=True, _allow_select=True)
 
+    def select_fixo(self, sql: str) -> list[dict]:
+        """SELECT montado em código com termos já validados (somente [A-Z0-9 ]). Devolve lista de dicts."""
+        if not re.match(r"^\s*select\b", sql, re.IGNORECASE) or re.search(r";|--|/\*", sql):
+            raise SankhyaError("select_fixo aceita apenas SELECT simples")
+        body = self.call("DbExplorerSP.executeQuery", {"sql": sql}, retry_reads=True, _allow_select=True)
+        rb = body.get("responseBody") or {}
+        nomes = [m.get("name") for m in rb.get("fieldsMetadata", [])]
+        return [dict(zip(nomes, linha)) for linha in rb.get("rows", [])]
+
     # ---------- REST (somente GET, sempre leitura) ----------
     def rest_get(self, path: str, query: dict | None = None) -> dict:
         """GET em endpoint REST (ex.: /v1/estoque/produtos/4599). Somente leitura."""

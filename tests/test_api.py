@@ -156,3 +156,20 @@ def test_diagnostico_exige_admin(tmp_path):
 def test_parametros_do_sankhya_usam_cifrao():
     from app.sankhya_client import SankhyaClient
     assert SankhyaClient._params([("S", "%A%"), ("I", 5)]) == [{"$": "%A%", "type": "S"}, {"$": "5", "type": "I"}]
+
+
+def test_busca_sql_sanitizada():
+    from app.sankhya_ops import SankhyaOps
+
+    class FakeClient:
+        sqls = []
+        def select_fixo(self, sql):
+            self.sqls.append(sql)
+            return [{"CODPROD": "1", "DESCRPROD": "Calculadora", "CODVOL": "UN"}]
+
+    c = FakeClient()
+    r = SankhyaOps(c, None).buscar_produtos("Calculadora' OR 1=1 --; mesa", 3)
+    sql = c.sqls[0]
+    assert r[0]["codigo"] == 1
+    assert "'" not in sql.split("WHERE", 1)[1].replace("'%", "").replace("%'", "").replace("'S'", "")
+    assert ";" not in sql and "--" not in sql and "ROWNUM <= 3" in sql
