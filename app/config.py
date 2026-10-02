@@ -26,7 +26,7 @@ class Config:
     max_itens: int = 20
     quantidade_max_item: float = 999.0
     db_path: str = "/data/agente.db"
-    versao: str = "0.1.0"
+    versao: str = "0.1.1"
 
     @classmethod
     def from_env(cls) -> "Config":

@@ -1,5 +1,6 @@
 services:
   api:
+    image: agente-up:0.1.1
     build:
       context: https://github.com/marciorbs1375/api-agente-up.git#main
     restart: unless-stopped

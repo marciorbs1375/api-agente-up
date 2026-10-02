@@ -1,9 +1,13 @@
 """Operações de leitura no Sankhya. Nomes marcados [A CONFIRMAR] ainda não foram vistos em produção."""
 import datetime as dt
+import logging
 import re
 
 from .regras import ErroNegocio
 from .sankhya_client import SankhyaClient, SankhyaError
+
+
+log = logging.getLogger("agente.sankhya")
 
 
 def _digitos(s: str) -> str:
@@ -16,6 +20,8 @@ class SankhyaOps:
         self.cfg = cfg
 
     def _traduz(self, e: SankhyaError):
+        corpo = str(e.body)[:300] if e.body is not None else ""
+        log.error("sankhya erro http=%s msg=%s corpo=%s", e.http_status, str(e)[:300], corpo)
         if e.http_status in (502, 503, 504) or "timed out" in str(e).lower():
             raise ErroNegocio("SANKHYA_LENTO", "O sistema está lento agora. Tente de novo em instantes.")
         raise ErroNegocio("SANKHYA_INDISPONIVEL", "Não consegui consultar o sistema agora.")
