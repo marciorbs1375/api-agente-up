@@ -22,6 +22,7 @@ class SankhyaOps:
 
     def _traduz(self, e: SankhyaError):
         corpo = str(e.body)[:300] if e.body is not None else ""
+        self.ultimo_erro = corpo
         log.error("sankhya erro http=%s msg=%s corpo=%s", e.http_status, str(e)[:300], corpo)
         if e.http_status in (502, 503, 504) or "timed out" in str(e).lower():
             raise ErroNegocio("SANKHYA_LENTO", "O sistema está lento agora. Tente de novo em instantes.")
@@ -98,7 +99,8 @@ class SankhyaOps:
             "credito_verificado": False,  # títulos vencidos ainda não consultados: venda a prazo fica desligada
         }
 
-    def precos(self, codigo_cliente: int, itens: list[tuple[int, float]], tipneg: int | None = None) -> dict[int, float]:
+    def precos(self, codigo_cliente: int, itens: list[tuple[int, float]], tipneg: int | None = None,
+               top: int | None = None) -> dict[int, float]:
         c = self.cfg
         tipneg = tipneg or c.tipneg_padrao
         if not c.codvend_agente or not tipneg:
@@ -112,7 +114,7 @@ class SankhyaOps:
         unidade = {int(v["CODPROD"]): v["CODVOL"] for v in vols}
         corpo = {
             "codigoEmpresa": c.empresa_padrao, "codigoCliente": codigo_cliente,
-            "codigoVendedor": c.codvend_agente, "codigoTipoOperacao": c.top_pedido,
+            "codigoVendedor": c.codvend_agente, "codigoTipoOperacao": top or c.top_pedido,
             "codigoTipoNegociacao": tipneg,
             "dataNegociacao": dt.date.today().strftime("%d/%m/%Y"),  # formato [A CONFIRMAR]
             "produtos": [{"codigoProduto": cod, "quantidade": q, "codigoLocalEstoque": c.local_estoque_padrao,
@@ -170,16 +172,20 @@ class SankhyaOps:
                 out[nome] = {"erro": str(e)[:300]}
         return out
 
-    def testa_negociacoes(self, codigo_cliente: int, codigo_produto: int) -> dict:
+    def testa_negociacoes(self, codigo_cliente: int, codigo_produto: int, top: int | None = None) -> dict:
         """Só leitura: calcula o preço com cada forma de pagamento ativa e mostra quais a TOP aceita."""
         tipos = self.c.select_fixo(
             "SELECT DISTINCT CODTIPVENDA, DESCRTIPVENDA FROM TGFTPV WHERE ATIVO = 'S' AND ROWNUM <= 80")
-        aceitas, recusadas = [], 0
+        aceitas, motivos = [], {}
         for t in tipos:
             try:
-                p = self.precos(codigo_cliente, [(codigo_produto, 1)], tipneg=int(t["CODTIPVENDA"]))
+                p = self.precos(codigo_cliente, [(codigo_produto, 1)], tipneg=int(t["CODTIPVENDA"]), top=top)
                 aceitas.append({"tipneg": int(t["CODTIPVENDA"]), "descricao": t["DESCRTIPVENDA"],
                                 "preco": p[codigo_produto]})
-            except Exception:
-                recusadas += 1
-        return {"aceitas": aceitas, "recusadas": recusadas, "testadas": len(tipos)}
+            except SankhyaError as e:
+                motivos.setdefault(str(e.body)[-220:], []).append(int(t["CODTIPVENDA"]))
+            except Exception as e:
+                chave = (getattr(self, "ultimo_erro", "") or str(e))[-220:]
+                motivos.setdefault(chave, []).append(int(t["CODTIPVENDA"]))
+        return {"top": top or self.cfg.top_pedido, "aceitas": aceitas, "testadas": len(tipos),
+                "motivos_recusa": {k: v[:12] for k, v in motivos.items()}}

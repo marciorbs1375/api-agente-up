@@ -118,8 +118,8 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
         return {"ok": True, "opcoes": ops.opcoes_config()}
 
     @app.get("/admin/testar-negociacoes")
-    def testar_neg(cliente: int, produto: int, _=admin):
-        return {"ok": True, "resultado": ops.testa_negociacoes(cliente, produto)}
+    def testar_neg(cliente: int, produto: int, top: int | None = None, _=admin):
+        return {"ok": True, "resultado": ops.testa_negociacoes(cliente, produto, top)}
 
     @app.post("/v1/produtos/buscar")
     def buscar(b: BuscarIn, _=agente):
