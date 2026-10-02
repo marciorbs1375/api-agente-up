@@ -66,6 +66,25 @@ class MensagemIn(BaseModel):
     texto: str = Field(min_length=1, max_length=2000)
 
 
+class DadosConversa(BaseModel):
+    resposta: str = Field(description="Texto para enviar ao cliente no canal.")
+    acao: str = Field(description="'responder' = envie a resposta; 'transferir_humano' = envie a resposta e passe a conversa para uma pessoa.")
+    motivo: str | None = Field(default=None, description="Motivo da transferência (ex.: fechar_pedido, sem_preco, desconto, pediu_humano, erro_sistema).")
+    orcamento_id: str | None = Field(default=None, description="Número do orçamento montado nesta resposta, se houver.")
+
+
+class ErroApi(BaseModel):
+    codigo: str
+    mensagem: str
+
+
+class RespostaConversa(BaseModel):
+    ok: bool
+    dados: DadosConversa | None = None
+    erro: ErroApi | None = Field(default=None, description="Preenchido quando ok=false (ex.: AGENTE_NAO_CONFIGURADO). Nesse caso, passe a conversa para uma pessoa.")
+    consultado_em: float
+
+
 class PendenciaIn(BaseModel):
     conversa_id: str
     tipo: str = Field(max_length=40)
@@ -144,7 +163,7 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
     locks: dict[str, threading.Lock] = {}
     locks_guarda = threading.Lock()
 
-    @app.post("/v1/conversas/mensagem")
+    @app.post("/v1/conversas/mensagem", response_model=RespostaConversa)
     def conversa(b: MensagemIn, _=agente):
         """Canal (WellChat, CloudCampaign...) manda a fala do cliente; recebe a resposta ou a decisão de transferir."""
         chave = f"msg:{b.canal}:{b.conversa_id}:{b.mensagem_id}" if b.mensagem_id else None
