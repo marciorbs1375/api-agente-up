@@ -98,9 +98,10 @@ class SankhyaOps:
             "credito_verificado": False,  # títulos vencidos ainda não consultados: venda a prazo fica desligada
         }
 
-    def precos(self, codigo_cliente: int, itens: list[tuple[int, float]]) -> dict[int, float]:
+    def precos(self, codigo_cliente: int, itens: list[tuple[int, float]], tipneg: int | None = None) -> dict[int, float]:
         c = self.cfg
-        if not c.codvend_agente or not c.tipneg_padrao:
+        tipneg = tipneg or c.tipneg_padrao
+        if not c.codvend_agente or not tipneg:
             raise ErroNegocio("CONFIG_INCOMPLETA", "Preço indisponível: configuração do vendedor/negociação pendente.")
         codigos = sorted({int(cod) for cod, _ in itens})
         try:
@@ -112,7 +113,7 @@ class SankhyaOps:
         corpo = {
             "codigoEmpresa": c.empresa_padrao, "codigoCliente": codigo_cliente,
             "codigoVendedor": c.codvend_agente, "codigoTipoOperacao": c.top_pedido,
-            "codigoTipoNegociacao": c.tipneg_padrao,
+            "codigoTipoNegociacao": tipneg,
             "dataNegociacao": dt.date.today().strftime("%d/%m/%Y"),  # formato [A CONFIRMAR]
             "produtos": [{"codigoProduto": cod, "quantidade": q, "codigoLocalEstoque": c.local_estoque_padrao,
                           "controle": " ", "unidade": unidade.get(int(cod), "UN")}
@@ -168,3 +169,17 @@ class SankhyaOps:
             except Exception as e:
                 out[nome] = {"erro": str(e)[:300]}
         return out
+
+    def testa_negociacoes(self, codigo_cliente: int, codigo_produto: int) -> dict:
+        """Só leitura: calcula o preço com cada forma de pagamento ativa e mostra quais a TOP aceita."""
+        tipos = self.c.select_fixo(
+            "SELECT DISTINCT CODTIPVENDA, DESCRTIPVENDA FROM TGFTPV WHERE ATIVO = 'S' AND ROWNUM <= 80")
+        aceitas, recusadas = [], 0
+        for t in tipos:
+            try:
+                p = self.precos(codigo_cliente, [(codigo_produto, 1)], tipneg=int(t["CODTIPVENDA"]))
+                aceitas.append({"tipneg": int(t["CODTIPVENDA"]), "descricao": t["DESCRTIPVENDA"],
+                                "preco": p[codigo_produto]})
+            except Exception:
+                recusadas += 1
+        return {"aceitas": aceitas, "recusadas": recusadas, "testadas": len(tipos)}
