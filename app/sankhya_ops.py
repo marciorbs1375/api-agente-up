@@ -164,8 +164,8 @@ class SankhyaOps:
                                      "(UPPER(APELIDO) LIKE '%WHATS%' OR UPPER(APELIDO) LIKE '%AGENTE%' "
                                      "OR UPPER(APELIDO) LIKE '%ONLINE%' OR UPPER(APELIDO) LIKE '%IA%' "
                                      "OR UPPER(APELIDO) LIKE '%SITE%') AND ROWNUM <= 20",
-            "clientes_com_tabela": "SELECT CODPARC, CODTAB FROM TGFPAR WHERE CLIENTE = 'S' AND ATIVO = 'S' "
-                                   "AND CODTAB > 0 AND ROWNUM <= 8",
+            "clientes_com_tabela": "SELECT CODPARC, CODTAB, CGC_CPF FROM TGFPAR WHERE CLIENTE = 'S' AND ATIVO = 'S' "
+                                   "AND CODTAB > 0 AND LENGTH(CGC_CPF) = 14 AND ROWNUM <= 8",  # só CNPJ, nunca CPF
             "vendedores_amostra": "SELECT CODVEND, APELIDO FROM TGFVEN WHERE ATIVO = 'S' AND ROWNUM <= 25",
         }
         for nome, sql in consultas.items():
