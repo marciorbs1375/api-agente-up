@@ -189,3 +189,21 @@ class SankhyaOps:
                 motivos.setdefault(chave, []).append(int(t["CODTIPVENDA"]))
         return {"top": top or self.cfg.top_pedido, "aceitas": aceitas, "testadas": len(tipos),
                 "motivos_recusa": {k: v[:12] for k, v in motivos.items()}}
+
+    def preco_bruto(self, codigo_cliente: int, codigo_produto: int, tipneg: int, top: int) -> dict:
+        """Só leitura: devolve a resposta crua do Sankhya para conferir o formato. Rota /admin/preco-bruto."""
+        c = self.cfg
+        vols = self.c.select_fixo(f"SELECT CODVOL FROM TGFPRO WHERE CODPROD = {int(codigo_produto)}")
+        corpo = {
+            "codigoEmpresa": c.empresa_padrao, "codigoCliente": int(codigo_cliente),
+            "codigoVendedor": c.codvend_agente, "codigoTipoOperacao": int(top),
+            "codigoTipoNegociacao": int(tipneg),
+            "dataNegociacao": dt.date.today().strftime("%d/%m/%Y"),
+            "produtos": [{"codigoProduto": int(codigo_produto), "quantidade": 1,
+                          "codigoLocalEstoque": c.local_estoque_padrao, "controle": " ",
+                          "unidade": (vols[0]["CODVOL"] if vols else "UN")}],
+        }
+        try:
+            return self.c.rest_post_leitura("/v1/precos/contextualizado", corpo)
+        except SankhyaError as e:
+            return {"erro": str(e)[:300], "corpo": str(e.body)[:400]}
