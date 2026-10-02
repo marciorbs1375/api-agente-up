@@ -1,0 +1,110 @@
+"""Operações de leitura no Sankhya. Nomes marcados [A CONFIRMAR] ainda não foram vistos em produção."""
+import datetime as dt
+import re
+
+from .regras import ErroNegocio
+from .sankhya_client import SankhyaClient, SankhyaError
+
+
+def _digitos(s: str) -> str:
+    return re.sub(r"\D", "", s or "")
+
+
+class SankhyaOps:
+    def __init__(self, client: SankhyaClient, cfg):
+        self.c = client
+        self.cfg = cfg
+
+    def _traduz(self, e: SankhyaError):
+        if e.http_status in (502, 503, 504) or "timed out" in str(e).lower():
+            raise ErroNegocio("SANKHYA_LENTO", "O sistema está lento agora. Tente de novo em instantes.")
+        raise ErroNegocio("SANKHYA_INDISPONIVEL", "Não consegui consultar o sistema agora.")
+
+    def buscar_produtos(self, texto: str, limite: int) -> list[dict]:
+        palavras = [p for p in re.split(r"\s+", texto.strip().upper()) if p][:4]
+        if not palavras:
+            return []
+        try:
+            if len(palavras) == 1 and palavras[0].isdigit():
+                expr, params = "this.CODPROD = ?", [("I", palavras[0])]
+            else:
+                expr = " AND ".join(["this.DESCRPROD LIKE ?"] * len(palavras)) + " AND this.ATIVO = ?"
+                params = [("S", f"%{p}%") for p in palavras] + [("S", "S")]
+            # campos CODPROD e DESCRPROD confirmados; CODVOL e ATIVO [A CONFIRMAR]
+            linhas = self.c.load_records("Produto", ["CODPROD", "DESCRPROD", "CODVOL"], expr, params, max_pages=1)
+        except SankhyaError as e:
+            self._traduz(e)
+        return [{"codigo": int(r["CODPROD"]), "descricao": r["DESCRPROD"], "unidade": r.get("CODVOL")}
+                for r in linhas[:limite]]
+
+    def estoque(self, codigo: int, empresa: int) -> dict:
+        try:
+            corpo = self.c.rest_get(f"/v1/estoque/produtos/{codigo}")  # confirmado em produção
+        except SankhyaError as e:
+            self._traduz(e)
+        linhas = [x for x in (corpo.get("estoque") or []) if int(x.get("codigoEmpresa", -1)) == empresa]
+        if not linhas:
+            return {"codigo": codigo, "empresa": empresa, "disponivel": None, "sem_movimentacao": True, "locais": []}
+        local = self.cfg.local_estoque_padrao
+        no_local = [x for x in linhas if int(x.get("codigoLocal", -1)) == local]
+        base = no_local or linhas
+        return {
+            "codigo": codigo, "empresa": empresa, "local": local if no_local else None,
+            "disponivel": float(sum(float(x.get("estoque", 0)) for x in base)),
+            "sem_movimentacao": False,
+            "locais": [{"local": int(x["codigoLocal"]), "estoque": float(x.get("estoque", 0))} for x in linhas],
+        }
+
+    def identificar_cliente(self, telefone: str | None, documento: str | None) -> dict:
+        campos = ["CODPARC", "NOMEPARC", "ATIVO", "LIMCRED"]  # LIMCRED confirmado no dicionário
+        try:
+            if documento:
+                d = _digitos(documento)
+                if len(d) not in (11, 14):
+                    raise ErroNegocio("DOCUMENTO_INVALIDO", "Documento inválido. Peça o CPF ou CNPJ de novo.")
+                # CGC_CPF [A CONFIRMAR]
+                linhas = self.c.load_records("Parceiro", campos, "this.CGC_CPF = ? AND this.CLIENTE = ?",
+                                             [("S", d), ("S", "S")], max_pages=1)
+            elif telefone:
+                t = _digitos(telefone)[-9:]
+                if len(t) < 8:
+                    raise ErroNegocio("TELEFONE_INVALIDO", "Telefone inválido.")
+                # TELEFONE [A CONFIRMAR]
+                linhas = self.c.load_records("Parceiro", campos, "this.TELEFONE LIKE ? AND this.CLIENTE = ?",
+                                             [("S", f"%{t}"), ("S", "S")], max_pages=1)
+            else:
+                raise ErroNegocio("ENTRADA_INVALIDA", "Informe telefone ou documento.")
+        except SankhyaError as e:
+            self._traduz(e)
+        if not linhas:
+            raise ErroNegocio("CLIENTE_NAO_CADASTRADO", "Não encontrei cadastro com esses dados.")
+        if len(linhas) > 1:
+            raise ErroNegocio("CLIENTE_AMBIGUO", "Mais de um cadastro encontrado. Peça o CPF ou CNPJ para confirmar.")
+        r = linhas[0]
+        return {
+            "codigo_cliente": int(r["CODPARC"]), "nome": r["NOMEPARC"], "ativo": r.get("ATIVO") == "S",
+            "limite_credito": float(r["LIMCRED"]) if r.get("LIMCRED") not in (None, "") else None,
+            "credito_verificado": False,  # títulos vencidos ainda não consultados: venda a prazo fica desligada
+        }
+
+    def precos(self, codigo_cliente: int, itens: list[tuple[int, float]]) -> dict[int, float]:
+        c = self.cfg
+        if not c.codvend_agente or not c.tipneg_padrao:
+            raise ErroNegocio("CONFIG_INCOMPLETA", "Preço indisponível: configuração do vendedor/negociação pendente.")
+        corpo = {
+            "codigoEmpresa": c.empresa_padrao, "codigoCliente": codigo_cliente,
+            "codigoVendedor": c.codvend_agente, "codigoTipoOperacao": c.top_pedido,
+            "codigoTipoNegociacao": c.tipneg_padrao,
+            "dataNegociacao": dt.date.today().strftime("%d/%m/%Y"),  # formato [A CONFIRMAR]
+            "produtos": [{"codigoProduto": cod, "quantidade": q, "codigoLocalEstoque": c.local_estoque_padrao}
+                         for cod, q in itens],
+        }
+        try:
+            resp = self.c.rest_post_leitura("/v1/precos/contextualizado", corpo)
+        except SankhyaError as e:
+            self._traduz(e)
+        out = {int(p["codigoProduto"]): float(p["valor"]) for p in (resp.get("precos") or [])}
+        faltando = [cod for cod, _ in itens if cod not in out]
+        if faltando:
+            raise ErroNegocio("PRECO_INDISPONIVEL", f"Sem preço para o produto {faltando[0]}.")
+        return out

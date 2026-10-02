@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: https://github.com/marciorbs1375/api-agente-up.git#main
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      API_KEY_AGENTE: ${API_KEY_AGENTE}
+      API_KEY_ADMIN: ${API_KEY_ADMIN}
+      ESCRITA_HABILITADA: "false"
+      SANKHYA_ENV: ${SANKHYA_ENV:-prod}
+      SANKHYA_CLIENT_ID: ${SANKHYA_CLIENT_ID:-}
+      SANKHYA_CLIENT_SECRET: ${SANKHYA_CLIENT_SECRET:-}
+      SANKHYA_X_TOKEN: ${SANKHYA_X_TOKEN:-}
+      CODVEND_AGENTE: ${CODVEND_AGENTE:-}
+      TIPNEG_PADRAO: ${TIPNEG_PADRAO:-}
+      DB_PATH: /data/agente.db
+    volumes:
+      - dados:/data
+volumes:
+  dados:
