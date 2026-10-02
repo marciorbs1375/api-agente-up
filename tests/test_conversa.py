@@ -133,3 +133,15 @@ def test_exige_chave_do_agente(tmp_path):
     c, _ = montar(tmp_path, Modelo())
     r = c.post("/v1/conversas/mensagem", headers=AD, json={"canal": "x", "conversa_id": "c", "texto": "oi"})
     assert r.status_code == 401
+
+
+def test_admin_ve_conversa_e_pendencias(tmp_path):
+    m = Modelo(uso("t1", "transferir_para_humano", {"motivo": "desconto", "resumo": "Quer 20% de desconto"}),
+               texto("Vou passar para um vendedor."))
+    c, _ = montar(tmp_path, m)
+    msg(c, "me dá 20% de desconto", conv="cX")
+    conv = c.get("/admin/conversa/cX", headers=AD).json()["mensagens"]
+    assert conv[0]["papel"] == "user" and conv[0]["conteudo"] == "me dá 20% de desconto"
+    pend = c.get("/admin/pendencias", headers=AD).json()["pendencias"]
+    assert pend[0]["tipo"] == "desconto"
+    assert c.get("/admin/pendencias", headers=AG).status_code == 401

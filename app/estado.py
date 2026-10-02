@@ -110,3 +110,17 @@ class Estado:
 
     def somar_uso(self, dia: str) -> None:
         self._exec("INSERT INTO uso_agente VALUES (?, 1) ON CONFLICT(dia) DO UPDATE SET chamadas = chamadas + 1", (dia,))
+
+    # consulta administrativa (acompanhar testes e ajustar o agente)
+    def conversa_completa(self, conversa: str, limite: int = 100) -> list[dict]:
+        with self._lock:
+            linhas = self._db.execute(
+                "SELECT papel, conteudo, criado FROM mensagem WHERE conversa=? ORDER BY id DESC LIMIT ?",
+                (conversa, limite)).fetchall()
+        return [{"papel": p, "conteudo": json.loads(c), "criado": t} for p, c, t in reversed(linhas)]
+
+    def pendencias_recentes(self, limite: int = 30) -> list[dict]:
+        with self._lock:
+            linhas = self._db.execute(
+                "SELECT id, conversa, tipo, resumo, criado FROM pendencia ORDER BY criado DESC LIMIT ?", (limite,)).fetchall()
+        return [{"id": i, "conversa": c, "tipo": t, "resumo": r, "criado": d} for i, c, t, r, d in linhas]

@@ -144,6 +144,14 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
     def diagnostico(_=admin):
         return {"ok": True, "passos": ops.diagnostico_busca()}
 
+    @app.get("/admin/pendencias")
+    def pendencias(limite: int = 30, _=admin):
+        return {"ok": True, "pendencias": estado.pendencias_recentes(min(max(limite, 1), 100))}
+
+    @app.get("/admin/conversa/{conversa_id}")
+    def ver_conversa(conversa_id: str, _=admin):
+        return {"ok": True, "mensagens": estado.conversa_completa(conversa_id)}
+
     @app.get("/admin/opcoes")
     def opcoes(_=admin):
         return {"ok": True, "opcoes": ops.opcoes_config()}
