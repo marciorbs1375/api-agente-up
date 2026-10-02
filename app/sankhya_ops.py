@@ -102,12 +102,20 @@ class SankhyaOps:
         c = self.cfg
         if not c.codvend_agente or not c.tipneg_padrao:
             raise ErroNegocio("CONFIG_INCOMPLETA", "Preço indisponível: configuração do vendedor/negociação pendente.")
+        codigos = sorted({int(cod) for cod, _ in itens})
+        try:
+            vols = self.c.select_fixo(
+                "SELECT CODPROD, CODVOL FROM TGFPRO WHERE CODPROD IN (" + ",".join(str(x) for x in codigos) + ")")
+        except SankhyaError as e:
+            self._traduz(e)
+        unidade = {int(v["CODPROD"]): v["CODVOL"] for v in vols}
         corpo = {
             "codigoEmpresa": c.empresa_padrao, "codigoCliente": codigo_cliente,
             "codigoVendedor": c.codvend_agente, "codigoTipoOperacao": c.top_pedido,
             "codigoTipoNegociacao": c.tipneg_padrao,
             "dataNegociacao": dt.date.today().strftime("%d/%m/%Y"),  # formato [A CONFIRMAR]
-            "produtos": [{"codigoProduto": cod, "quantidade": q, "codigoLocalEstoque": c.local_estoque_padrao}
+            "produtos": [{"codigoProduto": cod, "quantidade": q, "codigoLocalEstoque": c.local_estoque_padrao,
+                          "controle": " ", "unidade": unidade.get(int(cod), "UN")}
                          for cod, q in itens],
         }
         try:
