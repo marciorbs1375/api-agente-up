@@ -7,7 +7,7 @@ services:
       - sh
       - -c
       - |
-        python -c "import urllib.request,tarfile,io; tarfile.open(fileobj=io.BytesIO(urllib.request.urlopen('https://codeload.github.com/marciorbs1375/api-agente-up/tar.gz/1bbece30722456fb0bb41e2e3a547797848a4ef4').read())).extractall('/srv')" &&
+        python -c "import urllib.request,tarfile,io; tarfile.open(fileobj=io.BytesIO(urllib.request.urlopen('https://codeload.github.com/marciorbs1375/api-agente-up/tar.gz/main').read())).extractall('/srv')" &&
         cd /srv/api-agente-up-* &&
         pip install --no-cache-dir -q -r requirements.txt &&
         exec uvicorn app.main:build --factory --host 0.0.0.0 --port 8000

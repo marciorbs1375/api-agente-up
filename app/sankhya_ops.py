@@ -114,3 +114,23 @@ class SankhyaOps:
         if faltando:
             raise ErroNegocio("PRECO_INDISPONIVEL", f"Sem preço para o produto {faltando[0]}.")
         return out
+
+
+    def diagnostico_busca(self) -> dict:
+        """Só leitura, consultas fixas. Mostra onde a busca de produto quebra. Uso: rota /admin/diagnostico."""
+        passos: dict = {}
+
+        def roda(nome, fn):
+            try:
+                passos[nome] = fn()
+            except Exception as e:  # diagnóstico: devolve o erro em vez de esconder
+                passos[nome] = {"erro": f"{type(e).__name__}: {str(e)[:300]}", "corpo": str(getattr(e, "body", ""))[:300]}
+
+        roda("sql_contagem", lambda: self.c.query_select("SELECT COUNT(*) AS TOTAL FROM TGFPRO"))
+        roda("sql_amostra", lambda: self.c.query_select("SELECT TOP 3 CODPROD, DESCRPROD, ATIVO, CODVOL FROM TGFPRO"))
+        roda("crud_sem_filtro", lambda: self.c.load_records("Produto", ["CODPROD", "DESCRPROD"], None, None, max_pages=1)[:3])
+        roda("crud_so_ativo", lambda: self.c.load_records(
+            "Produto", ["CODPROD", "DESCRPROD"], "this.ATIVO = ?", [("S", "S")], max_pages=1)[:3])
+        roda("crud_so_like", lambda: self.c.load_records(
+            "Produto", ["CODPROD", "DESCRPROD"], "this.DESCRPROD LIKE ?", [("S", "%A%")], max_pages=1)[:3])
+        return passos

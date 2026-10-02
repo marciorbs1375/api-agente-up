@@ -109,6 +109,10 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
         estado.definir_desligado(False)
         return {"ok": True, "desligado": False}
 
+    @app.get("/admin/diagnostico")
+    def diagnostico(_=admin):
+        return {"ok": True, "passos": ops.diagnostico_busca()}
+
     @app.post("/v1/produtos/buscar")
     def buscar(b: BuscarIn, _=agente):
         def f():

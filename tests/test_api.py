@@ -144,3 +144,10 @@ def test_config_exige_chaves(monkeypatch):
     monkeypatch.setenv("API_KEY_ADMIN", "curta")
     with pytest.raises(RuntimeError):
         Config.from_env()
+
+
+def test_diagnostico_exige_admin(tmp_path):
+    c, ops, _ = montar(tmp_path)
+    ops.diagnostico_busca = lambda: {"x": 1}
+    assert c.get("/admin/diagnostico", headers=AG).status_code == 401
+    assert c.get("/admin/diagnostico", headers=AD).json()["passos"] == {"x": 1}
