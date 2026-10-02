@@ -220,6 +220,8 @@ class SankhyaOps:
                                  f"WHERE CODTAB = {tab} ORDER BY DTVIGOR DESC) WHERE ROWNUM <= 5",
             "preco_do_produto": f"SELECT NUTAB, CODPROD, VLRVENDA FROM TGFEXC WHERE CODPROD = {cod} AND NUTAB IN "
                                 f"(SELECT NUTAB FROM TGFTAB WHERE CODTAB = {tab}) AND ROWNUM <= 10",
+            "exemplos_com_preco": f"SELECT E.CODPROD, E.VLRVENDA FROM TGFEXC E WHERE E.NUTAB = (SELECT MAX(NUTAB) FROM TGFTAB "
+                                  f"WHERE CODTAB = {tab} AND DTVIGOR <= SYSDATE) AND E.VLRVENDA > 0 AND ROWNUM <= 5",
             "produto_preco_base": f"SELECT CODPROD, DESCRPROD FROM TGFPRO WHERE CODPROD = {cod}",
         }
         for nome, sql in consultas.items():
