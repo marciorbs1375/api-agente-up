@@ -113,6 +113,10 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
     def diagnostico(_=admin):
         return {"ok": True, "passos": ops.diagnostico_busca()}
 
+    @app.get("/admin/opcoes")
+    def opcoes(_=admin):
+        return {"ok": True, "opcoes": ops.opcoes_config()}
+
     @app.post("/v1/produtos/buscar")
     def buscar(b: BuscarIn, _=agente):
         def f():

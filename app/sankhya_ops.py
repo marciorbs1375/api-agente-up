@@ -142,3 +142,21 @@ class SankhyaOps:
             "Produto", ["CODPROD", "DESCRPROD"], "UPPER(this.DESCRPROD) LIKE ?", [("S", "%CALCULADORA%")], max_pages=1)[:3])
         roda("crud_busca_final", lambda: self.buscar_produtos("calculadora mesa", 3))
         return passos
+
+    def opcoes_config(self) -> dict:
+        """Só leitura, SELECTs fixos: ajuda a escolher CODVEND_AGENTE e TIPNEG_PADRAO. Rota /admin/opcoes."""
+        out: dict = {}
+        consultas = {
+            "tipos_negociacao": "SELECT CODTIPVENDA, DESCRTIPVENDA FROM TGFTPV WHERE ATIVO = 'S' AND ROWNUM <= 40",
+            "vendedores_candidatos": "SELECT CODVEND, APELIDO, ATIVO FROM TGFVEN WHERE ATIVO = 'S' AND "
+                                     "(UPPER(APELIDO) LIKE '%WHATS%' OR UPPER(APELIDO) LIKE '%AGENTE%' "
+                                     "OR UPPER(APELIDO) LIKE '%ONLINE%' OR UPPER(APELIDO) LIKE '%IA%' "
+                                     "OR UPPER(APELIDO) LIKE '%SITE%') AND ROWNUM <= 20",
+            "vendedores_amostra": "SELECT CODVEND, APELIDO FROM TGFVEN WHERE ATIVO = 'S' AND ROWNUM <= 25",
+        }
+        for nome, sql in consultas.items():
+            try:
+                out[nome] = self.c.select_fixo(sql)
+            except Exception as e:
+                out[nome] = {"erro": str(e)[:300]}
+        return out
