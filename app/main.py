@@ -156,6 +156,40 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
     def opcoes(_=admin):
         return {"ok": True, "opcoes": ops.opcoes_config()}
 
+    @app.get("/admin/top")
+    def ver_top(top: int | None = None, _=admin):
+        """Somente leitura: como a TOP de orçamento está configurada (tipo de movimento, estoque, financeiro)."""
+        return {"ok": True, "top": ops.tipmov_da_top(top or cfg.top_orcamento)}
+
+    @app.post("/admin/gravar-orcamento")
+    def gravar_orcamento(orcamento_id: str, _=admin):
+        """Grava UM orçamento já montado no Sankhya (TOP de orçamento). Exige ESCRITA_HABILITADA e é feito uma única vez por orçamento."""
+        def f():
+            if not cfg.escrita_habilitada:
+                raise ErroNegocio("MODO_SOMENTE_LEITURA", "Gravação no Sankhya está desligada.")
+            if estado.desligado():
+                raise ErroNegocio("DESLIGADO", "O agente está desligado.")
+            o = estado.obter_orcamento(orcamento_id)
+            if not o:
+                raise ErroNegocio("ORCAMENTO_NAO_ENCONTRADO", "Orçamento não encontrado.")
+            if agora() - o["dados"]["criado"] > VALIDADE_ORCAMENTO_DIAS * 86400:
+                raise ErroNegocio("ORCAMENTO_VENCIDO", "Orçamento vencido.")
+            chave = f"gravado:{orcamento_id}"
+            if estado.ler_chave(chave):
+                raise ErroNegocio("DUPLICADO", "Esse orçamento já foi gravado. Conferir o número no Sankhya.")
+            top = ops.tipmov_da_top(cfg.top_orcamento)
+            if not top.get("TIPMOV"):
+                raise ErroNegocio("CONFIG_INCOMPLETA", "Não consegui ler a TOP de orçamento.")
+            estado.gravar_chave(chave, "em_andamento")  # trava antes de gravar: em dúvida, nunca repete sozinho
+            try:
+                r = ops.gravar_orcamento(orcamento_id, o["cliente"], o["dados"]["itens"], top["TIPMOV"])
+            except Exception:
+                estado.gravar_chave(chave, "falhou_conferir_no_sankhya")
+                raise
+            estado.gravar_chave(chave, f"NUNOTA={r['nunota']}")
+            return r
+        return executa("admin.gravar_orcamento", orcamento_id, f)
+
     @app.get("/admin/testar-negociacoes")
     def testar_neg(cliente: int, produto: int, top: int | None = None, _=admin):
         return {"ok": True, "resultado": ops.testa_negociacoes(cliente, produto, top)}
@@ -283,5 +317,9 @@ def build() -> FastAPI:
     from .sankhya_ops import SankhyaOps
 
     cfg = Config.from_env()
-    client = SankhyaClient.from_env(read_only=True)  # a API nunca grava no Sankhya nesta versão
+    # Leitura sempre. A ÚNICA escrita possível é incluir orçamento, e só com ESCRITA_HABILITADA=true.
+    client = SankhyaClient.from_env(
+        read_only=True,
+        write_allowlist={"CACSP.incluirNota"} if cfg.escrita_habilitada else set(),
+    )
     return create_app(cfg, SankhyaOps(client, cfg), Estado(cfg.db_path))

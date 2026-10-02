@@ -230,3 +230,75 @@ class SankhyaOps:
             except Exception as e:
                 out[nome] = {"erro": str(e)[:300]}
         return out
+
+
+    # ---------- gravação do orçamento (TOP de orçamento). Só roda com ESCRITA_HABILITADA ----------
+    def tipmov_da_top(self, top: int) -> dict:
+        """Lê (somente leitura) como a TOP está configurada. Usado para conferir antes de gravar."""
+        top = int(top)
+        sql = ("SELECT CODTIPOPER, TIPMOV, DESCROPER, ATUALEST, ATUALFIN FROM (SELECT CODTIPOPER, TIPMOV, DESCROPER, "
+               f"ATUALEST, ATUALFIN FROM TGFTOP WHERE CODTIPOPER = {top} ORDER BY DHALTER DESC) WHERE ROWNUM = 1")
+        try:
+            linhas = self.c.select_fixo(sql)
+        except SankhyaError as e:
+            self._traduz(e)
+        return linhas[0] if linhas else {}
+
+    def codvol(self, codigo: int) -> str:
+        try:
+            r = self.c.select_fixo(f"SELECT CODVOL FROM TGFPRO WHERE CODPROD = {int(codigo)}")
+        except SankhyaError as e:
+            self._traduz(e)
+        return (r[0]["CODVOL"] if r else None) or "UN"
+
+    @staticmethod
+    def _acha_nunota(obj):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k == "NUNOTA":
+                    return v.get("$") if isinstance(v, dict) else v
+                r = SankhyaOps._acha_nunota(v)
+                if r not in (None, "", {}):
+                    return r
+        elif isinstance(obj, list):
+            for v in obj:
+                r = SankhyaOps._acha_nunota(v)
+                if r not in (None, "", {}):
+                    return r
+        return None
+
+    def gravar_orcamento(self, orc_id: str, cliente: int, itens: list[dict], tipmov: str) -> dict:
+        """Inclui UM orçamento no Sankhya (CACSP.incluirNota). Desconto sempre zero, preço = o do Sankhya."""
+        cfg = self.cfg
+        if not cfg.escrita_habilitada:
+            raise ErroNegocio("MODO_SOMENTE_LEITURA", "Gravação no Sankhya está desligada.")
+        if not (cfg.codvend_agente and cfg.tipneg_padrao):
+            raise ErroNegocio("CONFIG_INCOMPLETA", "Falta CODVEND_AGENTE ou TIPNEG_PADRAO.")
+        hoje = dt.date.today().strftime("%d/%m/%Y")
+        def v(x):
+            return {"$": str(x)}
+        linhas = []
+        for i in itens:
+            cod_vol = self.codvol(i["codigo"])
+            linhas.append({
+                "NUNOTA": {}, "CODPROD": v(i["codigo"]), "QTDNEG": v(i["quantidade"]),
+                "CODLOCALORIG": v(cfg.local_estoque_padrao), "CONTROLE": v(" "), "CODVOL": v(cod_vol),
+                "VLRUNIT": v(i["preco_unitario"]), "PERCDESC": v(0),
+            })
+        corpo = {"nota": {
+            "cabecalho": {
+                "NUNOTA": {}, "CODEMP": v(cfg.empresa_padrao), "CODPARC": v(cliente),
+                "CODTIPOPER": v(cfg.top_orcamento), "CODTIPVENDA": v(cfg.tipneg_padrao),
+                "CODVEND": v(cfg.codvend_agente), "TIPMOV": v(tipmov), "DTNEG": v(hoje),
+                "OBSERVACAO": v(f"Agente IA WhatsApp - {orc_id} - aguardando confirmacao do vendedor"),
+            },
+            "itens": {"INFORMARPRECO": "True", "item": linhas},
+        }}
+        try:
+            resp = self.c.call("CACSP.incluirNota", corpo, module="mgecom")
+        except SankhyaError as e:
+            self._traduz(e)
+        nunota = self._acha_nunota(resp)
+        if not nunota:
+            raise ErroNegocio("SANKHYA_INDISPONIVEL", "O Sankhya respondeu, mas sem o número do orçamento. Confira no Sankhya antes de repetir.")
+        return {"nunota": int(nunota)}

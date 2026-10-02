@@ -173,3 +173,59 @@ def test_busca_sql_sanitizada():
     assert r[0]["codigo"] == 1
     assert "'" not in sql.split("WHERE", 1)[1].replace("'%", "").replace("%'", "").replace("'S'", "")
     assert ";" not in sql and "--" not in sql and "ROWNUM <= 3" in sql
+
+
+# ---------- gravação do orçamento (rota admin, uma vez por orçamento) ----------
+def _ops_grava(ops):
+    ops.gravados = []
+    ops.tipmov_da_top = lambda top: {"TIPMOV": "P", "CODTIPOPER": top}
+    def grava(orc_id, cliente, itens, tipmov):
+        ops.gravados.append((orc_id, cliente, tipmov, itens))
+        return {"nunota": 12345}
+    ops.gravar_orcamento = grava
+
+
+def test_gravar_orcamento_bloqueado_em_leitura(tmp_path):
+    c, ops, _ = montar(tmp_path)
+    _ops_grava(ops)
+    oid = orc(c, [{"codigo": 1, "quantidade": 2}]).json()["dados"]["orcamento_id"]
+    r = c.post(f"/admin/gravar-orcamento?orcamento_id={oid}", headers=AD).json()
+    assert r["erro"]["codigo"] == "MODO_SOMENTE_LEITURA" and not ops.gravados
+
+
+def test_gravar_orcamento_exige_admin(tmp_path):
+    c, ops, _ = montar(tmp_path, escrita_habilitada=True)
+    _ops_grava(ops)
+    assert c.post("/admin/gravar-orcamento?orcamento_id=X", headers=AG).status_code == 401
+
+
+def test_gravar_orcamento_uma_vez_so(tmp_path):
+    c, ops, _ = montar(tmp_path, escrita_habilitada=True)
+    _ops_grava(ops)
+    oid = orc(c, [{"codigo": 1, "quantidade": 2}]).json()["dados"]["orcamento_id"]
+    r = c.post(f"/admin/gravar-orcamento?orcamento_id={oid}", headers=AD).json()
+    assert r["ok"] and r["dados"]["nunota"] == 12345
+    r2 = c.post(f"/admin/gravar-orcamento?orcamento_id={oid}", headers=AD).json()
+    assert r2["erro"]["codigo"] == "DUPLICADO" and len(ops.gravados) == 1
+
+
+def test_gravar_orcamento_falha_nao_repete(tmp_path):
+    c, ops, _ = montar(tmp_path, escrita_habilitada=True)
+    _ops_grava(ops)
+    from app.regras import ErroNegocio
+    def quebra(*a):
+        raise ErroNegocio("SANKHYA_LENTO", "lento")
+    ops.gravar_orcamento = quebra
+    oid = orc(c, [{"codigo": 1, "quantidade": 2}]).json()["dados"]["orcamento_id"]
+    c.post(f"/admin/gravar-orcamento?orcamento_id={oid}", headers=AD)
+    r = c.post(f"/admin/gravar-orcamento?orcamento_id={oid}", headers=AD).json()
+    assert r["erro"]["codigo"] == "DUPLICADO"
+
+
+def test_orcamento_inexistente_e_vencido(tmp_path):
+    c, ops, t = montar(tmp_path, escrita_habilitada=True)
+    _ops_grava(ops)
+    assert c.post("/admin/gravar-orcamento?orcamento_id=ORC-NADA", headers=AD).json()["erro"]["codigo"] == "ORCAMENTO_NAO_ENCONTRADO"
+    oid = orc(c, [{"codigo": 1, "quantidade": 2}]).json()["dados"]["orcamento_id"]
+    t[0] += 11 * 86400
+    assert c.post(f"/admin/gravar-orcamento?orcamento_id={oid}", headers=AD).json()["erro"]["codigo"] == "ORCAMENTO_VENCIDO"

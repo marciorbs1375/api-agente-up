@@ -53,6 +53,7 @@ class SankhyaClient:
         clock: Callable[[], float] = time.time,
         read_only: bool = True,
         max_pages_without_approval: int = 5,
+        write_allowlist: frozenset | set | None = None,
     ):
         if env not in BASES:
             raise ValueError("env deve ser 'sandbox' ou 'production'")
@@ -68,6 +69,8 @@ class SankhyaClient:
         self._lock = threading.Lock()
         # Padrão seguro: só leitura. Escrever exige read_only=False de forma explícita.
         self.read_only = read_only
+        # Mesmo em modo leitura, só estes serviços de escrita (e mais nenhum) podem ser chamados.
+        self.write_allowlist = frozenset(write_allowlist or ())
         self.max_pages_without_approval = max_pages_without_approval
 
     @classmethod
@@ -129,7 +132,8 @@ class SankhyaClient:
         max_attempts: int = 3,
         _allow_select: bool = False,
     ) -> dict:
-        if self.read_only and service not in READ_ONLY_SERVICES and not _allow_select:
+        if self.read_only and service not in READ_ONLY_SERVICES and not _allow_select \
+                and service not in self.write_allowlist:
             raise SankhyaError(f"Modo somente leitura: serviço '{service}' bloqueado")
         url = f"{self.base}/gateway/v1/{module}/service.sbr?" + urllib.parse.urlencode(
             {"serviceName": service, "outputType": "json"}
