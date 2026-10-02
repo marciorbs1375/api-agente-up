@@ -302,3 +302,17 @@ class SankhyaOps:
         if not nunota:
             raise ErroNegocio("SANKHYA_INDISPONIVEL", "O Sankhya respondeu, mas sem o número do orçamento. Confira no Sankhya antes de repetir.")
         return {"nunota": int(nunota)}
+
+    def ver_nota(self, nunota: int) -> dict:
+        """Somente leitura: cabeçalho e itens de uma nota/orçamento, para conferir o que foi gravado."""
+        n = int(nunota)
+        try:
+            cab = self.c.select_fixo(
+                "SELECT NUNOTA, CODEMP, CODPARC, CODTIPOPER, CODTIPVENDA, CODVEND, TIPMOV, STATUSNOTA, "
+                f"VLRNOTA, DTNEG, OBSERVACAO FROM TGFCAB WHERE NUNOTA = {n}")
+            ite = self.c.select_fixo(
+                "SELECT SEQUENCIA, CODPROD, QTDNEG, VLRUNIT, VLRTOT, PERCDESC, CODVOL, CODLOCALORIG "
+                f"FROM TGFITE WHERE NUNOTA = {n} ORDER BY SEQUENCIA")
+        except SankhyaError as e:
+            self._traduz(e)
+        return {"cabecalho": cab[0] if cab else None, "itens": ite}

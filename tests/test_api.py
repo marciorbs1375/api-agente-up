@@ -229,3 +229,11 @@ def test_orcamento_inexistente_e_vencido(tmp_path):
     oid = orc(c, [{"codigo": 1, "quantidade": 2}]).json()["dados"]["orcamento_id"]
     t[0] += 11 * 86400
     assert c.post(f"/admin/gravar-orcamento?orcamento_id={oid}", headers=AD).json()["erro"]["codigo"] == "ORCAMENTO_VENCIDO"
+
+
+def test_ver_nota_somente_admin(tmp_path):
+    c, ops, _ = montar(tmp_path)
+    ops.ver_nota = lambda n: {"cabecalho": {"NUNOTA": n}, "itens": []}
+    assert c.get("/admin/nota/5", headers=AG).status_code == 401
+    r = c.get("/admin/nota/5", headers=AD).json()
+    assert r["ok"] and r["dados"]["cabecalho"]["NUNOTA"] == 5

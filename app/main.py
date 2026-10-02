@@ -161,6 +161,11 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
         """Somente leitura: como a TOP de orçamento está configurada (tipo de movimento, estoque, financeiro)."""
         return {"ok": True, "top": ops.tipmov_da_top(top or cfg.top_orcamento)}
 
+    @app.get("/admin/nota/{nunota}")
+    def ver_nota(nunota: int, _=admin):
+        """Somente leitura: confere no Sankhya o que foi gravado (cabeçalho e itens)."""
+        return executa("admin.ver_nota", f"nota-{nunota}", lambda: ops.ver_nota(nunota))
+
     @app.post("/admin/gravar-orcamento")
     def gravar_orcamento(orcamento_id: str, _=admin):
         """Grava UM orçamento já montado no Sankhya (TOP de orçamento). Exige ESCRITA_HABILITADA e é feito uma única vez por orçamento."""
