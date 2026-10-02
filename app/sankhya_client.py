@@ -223,7 +223,7 @@ class SankhyaClient:
     # ---------- leitura ----------
     @staticmethod
     def _params(values: list[tuple[str, Any]] | None) -> list[dict]:
-        return [{"type": t, "value": str(v)} for t, v in (values or [])]
+        return [{"$": str(v), "type": t} for t, v in (values or [])]
 
     def load_records(
         self,

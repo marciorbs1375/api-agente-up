@@ -34,7 +34,7 @@ class SankhyaOps:
             if len(palavras) == 1 and palavras[0].isdigit():
                 expr, params = "this.CODPROD = ?", [("I", palavras[0])]
             else:
-                expr = " AND ".join(["this.DESCRPROD LIKE ?"] * len(palavras)) + " AND this.ATIVO = ?"
+                expr = " AND ".join(["UPPER(this.DESCRPROD) LIKE ?"] * len(palavras)) + " AND this.ATIVO = ?"
                 params = [("S", f"%{p}%") for p in palavras] + [("S", "S")]
             # campos CODPROD e DESCRPROD confirmados; CODVOL e ATIVO [A CONFIRMAR]
             linhas = self.c.load_records("Produto", ["CODPROD", "DESCRPROD", "CODVOL"], expr, params, max_pages=1)
@@ -127,10 +127,13 @@ class SankhyaOps:
                 passos[nome] = {"erro": f"{type(e).__name__}: {str(e)[:300]}", "corpo": str(getattr(e, "body", ""))[:300]}
 
         roda("sql_contagem", lambda: self.c.query_select("SELECT COUNT(*) AS TOTAL FROM TGFPRO"))
-        roda("sql_amostra", lambda: self.c.query_select("SELECT TOP 3 CODPROD, DESCRPROD, ATIVO, CODVOL FROM TGFPRO"))
+        roda("sql_amostra", lambda: self.c.query_select("SELECT CODPROD, DESCRPROD, ATIVO, CODVOL FROM TGFPRO WHERE ROWNUM <= 3"))
         roda("crud_sem_filtro", lambda: self.c.load_records("Produto", ["CODPROD", "DESCRPROD"], None, None, max_pages=1)[:3])
         roda("crud_so_ativo", lambda: self.c.load_records(
             "Produto", ["CODPROD", "DESCRPROD"], "this.ATIVO = ?", [("S", "S")], max_pages=1)[:3])
         roda("crud_so_like", lambda: self.c.load_records(
-            "Produto", ["CODPROD", "DESCRPROD"], "this.DESCRPROD LIKE ?", [("S", "%A%")], max_pages=1)[:3])
+            "Produto", ["CODPROD", "DESCRPROD"], "this.DESCRPROD LIKE ?", [("S", "%MAKITA%")], max_pages=1)[:3])
+        roda("crud_upper_like", lambda: self.c.load_records(
+            "Produto", ["CODPROD", "DESCRPROD"], "UPPER(this.DESCRPROD) LIKE ?", [("S", "%CALCULADORA%")], max_pages=1)[:3])
+        roda("crud_busca_final", lambda: self.buscar_produtos("calculadora mesa", 3))
         return passos

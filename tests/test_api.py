@@ -151,3 +151,8 @@ def test_diagnostico_exige_admin(tmp_path):
     ops.diagnostico_busca = lambda: {"x": 1}
     assert c.get("/admin/diagnostico", headers=AG).status_code == 401
     assert c.get("/admin/diagnostico", headers=AD).json()["passos"] == {"x": 1}
+
+
+def test_parametros_do_sankhya_usam_cifrao():
+    from app.sankhya_client import SankhyaClient
+    assert SankhyaClient._params([("S", "%A%"), ("I", 5)]) == [{"$": "%A%", "type": "S"}, {"$": "5", "type": "I"}]
