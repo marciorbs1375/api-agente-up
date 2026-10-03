@@ -92,6 +92,12 @@ class PendenciaIn(BaseModel):
     resumo: str = Field(max_length=2000)
 
 
+def _br(ts: float, fmt: str) -> str:
+    """Data/hora no horário de Brasília (UTC-3), independente do fuso do servidor."""
+    import datetime as _dt
+    return _dt.datetime.fromtimestamp(ts, _dt.timezone(_dt.timedelta(hours=-3))).strftime(fmt)
+
+
 def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = time.time,
                transporte_modelo=None) -> FastAPI:
     app = FastAPI(title="Agente vendedor UP", version=cfg.versao)
@@ -266,6 +272,31 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
             return calcular_orcamento(cfg, ops, estado, agora(), b.conversa_id, b.codigo_cliente,
                                       [(i.codigo, i.quantidade) for i in b.itens])
         return com_idempotencia(idempotency_key, "orcamentos", b.conversa_id, f)
+
+    @app.get("/v1/orcamentos/{orcamento_id}")
+    def ver_orcamento(orcamento_id: str, conversa_id: str, _=agente):
+        """Dados completos de um orçamento para o canal gerar o PDF. Só da própria conversa."""
+        def f():
+            o = estado.obter_orcamento(orcamento_id)
+            if not o or o["conversa"] != conversa_id:
+                raise ErroNegocio("ORCAMENTO_NAO_ENCONTRADO", "Orçamento não encontrado nesta conversa.")
+            d = o["dados"]
+            gravado = estado.ler_chave(f"gravado:{orcamento_id}") or ""
+            criado = d["criado"]
+            return {
+                "orcamento_id": orcamento_id,
+                "criado_em": _br(criado, "%d/%m/%Y %H:%M"),
+                "valido_ate": _br(criado + VALIDADE_ORCAMENTO_DIAS * 86400, "%d/%m/%Y"),
+                "vencido": agora() - criado > VALIDADE_ORCAMENTO_DIAS * 86400,
+                "cliente": {"codigo": o["cliente"], "nome": d.get("cliente_nome")},
+                "itens": [{k: x.get(k) for k in ("codigo", "descricao", "unidade", "quantidade",
+                                                 "preco_unitario", "subtotal")} for x in d["itens"]],
+                "total": d["total"],
+                "desconto": 0,
+                "numero_sankhya": int(gravado.split("=", 1)[1]) if gravado.startswith("NUNOTA=") else None,
+                "observacao": "Orçamento sujeito à confirmação de um vendedor da UP. Preços da tabela do cliente, sem desconto.",
+            }
+        return executa("orcamentos.ver", conversa_id, f)
 
     @app.post("/v1/pedidos")
     def pedido(b: PedidoIn, idempotency_key: str | None = Header(default=None), _=agente):

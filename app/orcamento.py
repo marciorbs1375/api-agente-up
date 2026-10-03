@@ -4,8 +4,21 @@ from .regras import ErroNegocio, Item, validar_estoque, validar_itens, validar_t
 VALIDADE_ORCAMENTO_DIAS = 10
 
 
+def _descricoes(ops, codigos: list[int]) -> dict:
+    """Descrição e unidade de cada produto (para o PDF). Falha aqui nunca impede o orçamento."""
+    out = {}
+    for c in codigos:
+        try:
+            r = ops.buscar_produtos(str(c), 1)
+            if r:
+                out[c] = {"descricao": r[0].get("descricao"), "unidade": r[0].get("unidade")}
+        except Exception:
+            pass
+    return out
+
+
 def calcular_orcamento(cfg, ops, estado, agora: float, conversa: str, cliente: int,
-                       entradas: list[tuple[int, float]]) -> dict:
+                       entradas: list[tuple[int, float]], cliente_nome: str | None = None) -> dict:
     itens = [Item(c, q) for c, q in entradas]
     validar_itens(itens, cfg.max_itens, cfg.quantidade_max_item)
     for i in itens:
@@ -16,7 +29,11 @@ def calcular_orcamento(cfg, ops, estado, agora: float, conversa: str, cliente: i
                "subtotal": round(p[i.codigo] * i.quantidade, 2)} for i in itens]
     total = round(sum(x["subtotal"] for x in linhas), 2)
     validar_total(total, cfg.valor_max_pedido)
-    oid = estado.salvar_orcamento(conversa, cliente, {"itens": linhas, "total": total, "criado": agora})
+    desc = _descricoes(ops, [x["codigo"] for x in linhas])
+    for x in linhas:
+        x.update(desc.get(x["codigo"], {}))
+    oid = estado.salvar_orcamento(conversa, cliente, {"itens": linhas, "total": total, "criado": agora,
+                                                      "cliente_nome": cliente_nome})
     return {"orcamento_id": oid, "validade_dias": VALIDADE_ORCAMENTO_DIAS, "total": total, "itens": linhas,
             "registrado_no_sankhya": False,
             "aviso": "Orçamento guardado só aqui. Registro na TOP do Sankhya ainda não habilitado."}

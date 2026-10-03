@@ -173,7 +173,7 @@ class Agente:
                     p = self.ops.precos(ctx["cliente"]["codigo"], entradas)
                     return {"itens": [{"codigo": c, "preco_unitario": p[c]} for c, _ in entradas]}
                 r = calcular_orcamento(self.cfg, self.ops, self.estado, self.agora(), ctx["conversa"],
-                                       ctx["cliente"]["codigo"], entradas)
+                                       ctx["cliente"]["codigo"], entradas, ctx["cliente"].get("nome"))
                 ctx["orcamento_id"] = r["orcamento_id"]
                 return {k: r[k] for k in ("orcamento_id", "validade_dias", "total", "itens")}
             if nome == "informacoes_lojas":

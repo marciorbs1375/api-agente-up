@@ -239,3 +239,14 @@ def test_ver_nota_somente_admin(tmp_path):
     assert c.get("/admin/nota/5", headers=AG).status_code == 401
     r = c.get("/admin/nota/5", headers=AD).json()
     assert r["ok"] and r["dados"]["cabecalho"]["NUNOTA"] == 5
+
+
+def test_ver_orcamento_para_pdf(tmp_path):
+    c, ops, _ = montar(tmp_path)
+    oid = orc(c, [{"codigo": 1, "quantidade": 2}]).json()["dados"]["orcamento_id"]
+    assert c.get(f"/v1/orcamentos/{oid}?conversa_id=outra", headers=AG).json()["erro"]["codigo"] == "ORCAMENTO_NAO_ENCONTRADO"
+    r = c.get(f"/v1/orcamentos/{oid}?conversa_id=x", headers=AG).json()
+    assert r["ok"]
+    d = r["dados"]
+    assert d["total"] == 20.0 and d["itens"][0]["descricao"] == "PRODUTO UM" and d["numero_sankhya"] is None
+    assert d["desconto"] == 0 and d["valido_ate"]
