@@ -64,6 +64,7 @@ class MensagemIn(BaseModel):
     telefone: str | None = Field(default=None, max_length=30)
     nome: str | None = Field(default=None, max_length=80)
     texto: str = Field(min_length=1, max_length=2000)
+    novo_atendimento: bool = Field(default=False, description="true na 1ª mensagem depois que a conversa foi encerrada ou devolvida à IA (o atendimento humano anterior acabou).")
 
 
 class DadosConversa(BaseModel):
@@ -226,7 +227,8 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
                 estado.registrar_chamada("conversas.mensagem", b.conversa_id, 0, True, "DESLIGADO")
                 return r
             r = executa("conversas.mensagem", b.conversa_id,
-                        lambda: agente_conversa.conversar(b.conversa_id, b.texto, b.telefone, b.nome))
+                        lambda: agente_conversa.conversar(b.conversa_id, b.texto, b.telefone, b.nome,
+                                                                  novo_atendimento=b.novo_atendimento))
             if chave and (r["ok"] or r["erro"]["codigo"] not in ("AGENTE_NAO_CONFIGURADO",)):
                 estado.salvar_resposta(chave, r)
             return r

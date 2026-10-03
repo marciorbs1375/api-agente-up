@@ -30,11 +30,16 @@ REGRAS QUE NUNCA SE QUEBRAM
 11. Ao passar para um vendedor, avise o cliente em uma frase simples que alguém da equipe vai continuar o atendimento."""
 
 
-def montar_prompt(telefone: str | None, nome: str | None, cliente_nome: str | None, hoje: str) -> str:
+def montar_prompt(telefone: str | None, nome: str | None, cliente_nome: str | None, hoje: str,
+                  novo_atendimento: bool = False) -> str:
     dados = [
         f"Data de hoje: {hoje}.",
         f"Telefone do WhatsApp do cliente: {telefone or 'não informado'}.",
         f"Nome do contato no WhatsApp: {nome or 'não informado'}.",
         f"Cliente já identificado no cadastro: {cliente_nome or 'ainda não identificado'}.",
     ]
+    if novo_atendimento:
+        dados.append("NOVO ATENDIMENTO: o atendimento humano anterior já foi encerrado e a conversa voltou para você. "
+                      "Use o histórico só como contexto (ex.: cliente e orçamentos anteriores); não diga que o cliente "
+                      "está aguardando um vendedor e trate o pedido atual normalmente.")
     return BASE + "\n\nDADOS DESTA CONVERSA\n" + "\n".join(dados)

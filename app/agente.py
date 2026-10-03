@@ -214,7 +214,8 @@ class Agente:
         return {"resposta": resposta, "acao": "transferir_humano", "motivo": motivo,
                 "orcamento_id": ctx.get("orcamento_id"), "resumo": resumo[:1800]}
 
-    def conversar(self, conversa: str, texto: str, telefone: str | None, nome: str | None) -> dict:
+    def conversar(self, conversa: str, texto: str, telefone: str | None, nome: str | None,
+                  novo_atendimento: bool = False) -> dict:
         if not self.cfg.anthropic_api_key:
             raise ErroNegocio("AGENTE_NAO_CONFIGURADO", "O agente de conversa ainda não foi configurado.")
         ctx = {"conversa": conversa, "telefone": telefone, "acao": "responder", "motivo": None, "orcamento_id": None,
@@ -230,7 +231,8 @@ class Agente:
 
         historico = self.estado.historico(conversa, self.agora() - JANELA_HISTORICO)
         novas = [{"role": "user", "content": texto}]
-        system = montar_prompt(telefone, nome, (ctx["cliente"] or {}).get("nome"), dt.date.today().strftime("%d/%m/%Y"))
+        system = montar_prompt(telefone, nome, (ctx["cliente"] or {}).get("nome"), dt.date.today().strftime("%d/%m/%Y"),
+                               novo_atendimento)
         resposta = None
         try:
             for _ in range(MAX_RODADAS):

@@ -260,3 +260,12 @@ def test_cnpj_novo_exige_reidentificar_antes_do_preco(tmp_path):
     msg(c, "Meu CNPJ é 10364152000127. Quero 2 do produto 1")
     resultado = json.loads(m.chamadas[-1]["messages"][-1]["content"][0]["content"])
     assert resultado["erro"] == "CLIENTE_NAO_IDENTIFICADO"
+
+
+def test_novo_atendimento_avisa_o_modelo(tmp_path):
+    m = Modelo(texto("Oi!"), texto("Oi de novo!"))
+    c, _ = montar(tmp_path, m)
+    msg(c, "oi")
+    assert "NOVO ATENDIMENTO" not in m.chamadas[0]["system"]
+    msg(c, "oi", novo_atendimento=True)
+    assert "NOVO ATENDIMENTO" in m.chamadas[1]["system"]
