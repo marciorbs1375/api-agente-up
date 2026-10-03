@@ -26,11 +26,12 @@ services:
       AGENTE_LIMITE_DIARIO: ${AGENTE_LIMITE_DIARIO:-3000}
       DB_PATH: /data/agente.db
     volumes:
-      # pasta fixa no servidor: sobrevive a "Salvar e implantar" (volume nomeado era recriado)
-      - /root/cloudoperator-dados:/data
+      - dados:/data
   tunnel:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+volumes:
+  dados:
