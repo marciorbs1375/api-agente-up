@@ -1,11 +1,11 @@
 {
-  "_leia": "Só preencha o que foi CONFIRMADO pela UP. Campo null = o agente não informa e passa para um vendedor. Fonte atual: perfis do Google de cada loja, enviados pelo Marcio em 03/10/2026. WhatsApp: mesmo número do telefone em todas as lojas (confirmado pelo Marcio em 03/10/2026).",
+  "_leia": "Só preencha o que foi CONFIRMADO pela UP. Campo null = o agente não informa e passa para um vendedor. Fonte atual: perfis do Google de cada loja, enviados pelo Marcio em 03/10/2026. WhatsApp: mesmo número do telefone nas lojas com celular; o Corporativo (2222-9200) é só fixo (confirmado pelo Marcio em 03/10/2026).",
   "lojas": [
     {
       "nome": "UP Corporativo (UP+ Suprimentos Corporativos)",
       "endereco": "SC-281, 4781, Sertão do Maruim, São José/SC, CEP 88122-001",
       "telefone": "(48) 2222-9200",
-      "whatsapp": "(48) 2222-9200",
+      "whatsapp": null,
       "horario_semana": "segunda a sexta, 8h às 19h",
       "horario_sabado": "9h às 13h",
       "horario_domingo": "fechado"
