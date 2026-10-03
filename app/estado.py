@@ -111,6 +111,14 @@ class Estado:
     def somar_uso(self, dia: str) -> None:
         self._exec("INSERT INTO uso_agente VALUES (?, 1) ON CONFLICT(dia) DO UPDATE SET chamadas = chamadas + 1", (dia,))
 
+    def reiniciar_conversa(self, conversa: str) -> int:
+        """Apaga só a memória local do agente para esta conversa (histórico e cliente identificado)."""
+        with self._lock:
+            n = self._db.execute("DELETE FROM mensagem WHERE conversa=?", (conversa,)).rowcount
+            self._db.execute("DELETE FROM chave WHERE nome=?", (f"cli:{conversa}",))
+            self._db.commit()
+        return n
+
     # consulta administrativa (acompanhar testes e ajustar o agente)
     def conversa_completa(self, conversa: str, limite: int = 100) -> list[dict]:
         with self._lock:

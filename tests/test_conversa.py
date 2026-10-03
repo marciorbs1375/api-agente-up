@@ -163,3 +163,15 @@ def test_lojas_arquivo_real_sem_dado_inventado():
     import app.agente as ag
     for loja in ag.lojas_confirmadas():
         assert "nome" in loja
+
+
+def test_reiniciar_conversa_zera_memoria(tmp_path):
+    from tests.test_api import AD as ADMIN, AG as AGENTE
+    m = Modelo(texto("Oi!"))
+    c, _ = montar(tmp_path, m)
+    msg(c, "oi")
+    assert c.get("/admin/conversa/c1", headers=ADMIN).json()["mensagens"]
+    assert c.post("/admin/conversa/c1/reiniciar", headers=AGENTE).status_code == 401
+    r = c.post("/admin/conversa/c1/reiniciar", headers=ADMIN).json()
+    assert r["ok"] and r["mensagens_apagadas"] >= 2
+    assert c.get("/admin/conversa/c1", headers=ADMIN).json()["mensagens"] == []
