@@ -269,3 +269,17 @@ def test_novo_atendimento_avisa_o_modelo(tmp_path):
     assert "NOVO ATENDIMENTO" not in m.chamadas[0]["system"]
     msg(c, "oi", novo_atendimento=True)
     assert "NOVO ATENDIMENTO" in m.chamadas[1]["system"]
+
+
+def test_orcamentos_anteriores_sobrevivem_a_reiniciar(tmp_path):
+    from tests.test_api import AD as ADMIN
+    m = Modelo(uso("t0", "identificar_cliente", {"documento": "10364152000127"}),
+               uso("t1", "montar_orcamento", {"itens": [{"codigo": 1, "quantidade": 2}]}), texto("Orçamento."),
+               uso("t2", "orcamentos_anteriores", {}), texto("Lembro sim."))
+    c, _ = montar(tmp_path, m)
+    msg(c, "Meu CNPJ é 10364152000127, quero 2 do produto 1")
+    c.post("/admin/conversa/c1/reiniciar", headers=ADMIN)
+    msg(c, "lembra do meu orçamento?", novo_atendimento=True)
+    res = json.loads(m.chamadas[-1]["messages"][-1]["content"][0]["content"])
+    assert len(res["orcamentos"]) == 1 and res["orcamentos"][0]["total"] == 20.0
+    assert res["orcamentos"][0]["vencido"] is False and res["orcamentos"][0]["data"]

@@ -65,6 +65,22 @@ class Estado:
             return None
         return {"conversa": r[0], "cliente": r[1], "dados": json.loads(r[2]), "criado": r[3]}
 
+    def orcamentos_da_conversa(self, conversa: str, limite: int = 5) -> list[dict]:
+        with self._lock:
+            linhas = self._db.execute(
+                "SELECT id, dados, criado FROM orcamento WHERE conversa=? ORDER BY criado DESC LIMIT ?",
+                (conversa, limite)).fetchall()
+        out = []
+        for oid, dados, criado in linhas:
+            d = json.loads(dados)
+            g = self.ler_chave(f"gravado:{oid}") or ""
+            out.append({"orcamento_id": oid, "criado": d.get("criado", criado), "total": d.get("total"),
+                        "cliente_nome": d.get("cliente_nome"),
+                        "itens": [{k: i.get(k) for k in ("codigo", "descricao", "quantidade", "preco_unitario")}
+                                  for i in d.get("itens", [])],
+                        "numero_sankhya": int(g.split("=", 1)[1]) if g.startswith("NUNOTA=") else None})
+        return out
+
     def ultimo_orcamento(self, conversa: str):
         r = self._um("SELECT id FROM orcamento WHERE conversa=? ORDER BY criado DESC LIMIT 1", (conversa,))
         return r[0] if r else None

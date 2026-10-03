@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 from typing import Callable
 
-from .orcamento import calcular_orcamento, gravar_no_sankhya
+from .orcamento import VALIDADE_ORCAMENTO_DIAS, calcular_orcamento, gravar_no_sankhya
 from .prompt import montar_prompt
 from .regras import ErroNegocio, Item, validar_itens
 
@@ -96,6 +96,9 @@ FERRAMENTAS = [
      "input_schema": {"type": "object", "properties": {"itens": {"type": "array", "items": {
          "type": "object", "properties": {"codigo": {"type": "integer"}, "quantidade": {"type": "number"}},
          "required": ["codigo", "quantidade"]}}}, "required": ["itens"]}},
+    {"name": "orcamentos_anteriores",
+     "description": "Lista os orçamentos já feitos nesta conversa (mais recentes primeiro), com itens, total, data e número no Sankhya se já foi registrado.",
+     "input_schema": {"type": "object", "properties": {}}},
     {"name": "informacoes_lojas",
      "description": "Endereço, telefone, WhatsApp e horário das lojas da UP. Só traz o que foi confirmado; o que não vier, não informe.",
      "input_schema": {"type": "object", "properties": {}}},
@@ -179,6 +182,13 @@ class Agente:
                                        ctx["cliente"].get("documento"), ctx["cliente"].get("por"))
                 ctx["orcamento_id"] = r["orcamento_id"]
                 return {k: r[k] for k in ("orcamento_id", "validade_dias", "total", "itens")}
+            if nome == "orcamentos_anteriores":
+                lst = self.estado.orcamentos_da_conversa(ctx["conversa"])
+                for o in lst:
+                    criado = o.pop("criado")
+                    o["data"] = dt.datetime.fromtimestamp(criado, dt.timezone(dt.timedelta(hours=-3))).strftime("%d/%m/%Y %H:%M")
+                    o["vencido"] = self.agora() - criado > VALIDADE_ORCAMENTO_DIAS * 86400
+                return {"orcamentos": lst} if lst else {"orcamentos": [], "aviso": "Nenhum orçamento nesta conversa."}
             if nome == "informacoes_lojas":
                 return {"lojas": lojas_confirmadas(),
                         "aviso": "Informe só os campos presentes. Chame o número só de \"telefone\"; só diga que é WhatsApp se o campo whatsapp estiver presente. Em feriados o horário pode mudar: avise isso ao informar horário. Se o que o cliente pediu não estiver aqui, passe para um vendedor."}
