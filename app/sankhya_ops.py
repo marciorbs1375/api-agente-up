@@ -102,7 +102,7 @@ class SankhyaOps:
 
     def identificar_cliente(self, telefone: str | None, documento: str | None) -> dict:
         # Só dígitos entram no SQL (montado em código): sem risco de injeção.
-        base = "SELECT CODPARC, NOMEPARC, ATIVO, LIMCRED FROM TGFPAR WHERE CLIENTE = 'S' AND "
+        base = "SELECT CODPARC, NOMEPARC, ATIVO, LIMCRED, CGC_CPF FROM TGFPAR WHERE CLIENTE = 'S' AND "
         try:
             if documento:
                 d = _digitos(documento)
@@ -126,6 +126,7 @@ class SankhyaOps:
         r = linhas[0]
         return {
             "codigo_cliente": int(r["CODPARC"]), "nome": r["NOMEPARC"], "ativo": r.get("ATIVO") == "S",
+            "documento": _digitos(r.get("CGC_CPF") or "") or None,
             "limite_credito": float(r["LIMCRED"]) if r.get("LIMCRED") not in (None, "") else None,
             "credito_verificado": False,  # títulos vencidos ainda não consultados: venda a prazo fica desligada
         }

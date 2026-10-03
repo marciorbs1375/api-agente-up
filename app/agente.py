@@ -161,8 +161,10 @@ class Agente:
                 r = self.ops.identificar_cliente(None if doc else ctx["telefone"], doc)
                 if not r.get("ativo"):
                     raise ErroNegocio("CLIENTE_INATIVO", "Cadastro inativo.")
-                self.estado.gravar_chave(f"cli:{ctx['conversa']}", json.dumps({"codigo": r["codigo_cliente"], "nome": r["nome"]}))
-                ctx["cliente"] = {"codigo": r["codigo_cliente"], "nome": r["nome"]}
+                cli = {"codigo": r["codigo_cliente"], "nome": r["nome"], "documento": r.get("documento"),
+                       "por": "documento" if doc else "telefone"}
+                self.estado.gravar_chave(f"cli:{ctx['conversa']}", json.dumps(cli))
+                ctx["cliente"] = cli
                 return {"identificado": True, "nome": r["nome"], "por": "documento" if doc else "telefone"}
             if nome in ("consultar_preco", "montar_orcamento"):
                 if not ctx.get("cliente"):
@@ -173,7 +175,8 @@ class Agente:
                     p = self.ops.precos(ctx["cliente"]["codigo"], entradas)
                     return {"itens": [{"codigo": c, "preco_unitario": p[c]} for c, _ in entradas]}
                 r = calcular_orcamento(self.cfg, self.ops, self.estado, self.agora(), ctx["conversa"],
-                                       ctx["cliente"]["codigo"], entradas, ctx["cliente"].get("nome"))
+                                       ctx["cliente"]["codigo"], entradas, ctx["cliente"].get("nome"),
+                                       ctx["cliente"].get("documento"), ctx["cliente"].get("por"))
                 ctx["orcamento_id"] = r["orcamento_id"]
                 return {k: r[k] for k in ("orcamento_id", "validade_dias", "total", "itens")}
             if nome == "informacoes_lojas":
