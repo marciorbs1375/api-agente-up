@@ -96,7 +96,10 @@ class Agente:
             if nome == "consultar_estoque":
                 cod = int(entrada["codigo_produto"])
                 r = self.ops.estoque(cod, self.cfg.empresa_padrao)
-                return {"codigo": cod, "disponivel": r.get("disponivel"), "sem_movimentacao": r.get("sem_movimentacao", False)}
+                if r.get("sem_movimentacao") or not r.get("disponivel"):
+                    # sem registro de estoque na empresa = sem saldo (não é falha da consulta)
+                    return {"codigo": cod, "disponivel": 0, "situacao": "sem estoque no momento"}
+                return {"codigo": cod, "disponivel": r.get("disponivel"), "situacao": "em estoque"}
             if nome == "identificar_cliente":
                 doc = entrada.get("documento")
                 r = self.ops.identificar_cliente(None if doc else ctx["telefone"], doc)

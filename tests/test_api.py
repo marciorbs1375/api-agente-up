@@ -171,7 +171,9 @@ def test_busca_sql_sanitizada():
     r = SankhyaOps(c, None).buscar_produtos("Calculadora' OR 1=1 --; mesa", 3)
     sql = c.sqls[0]
     assert r[0]["codigo"] == 1
-    assert "'" not in sql.split("WHERE", 1)[1].replace("'%", "").replace("%'", "").replace("'S'", "")
+    from app.sankhya_ops import _COM_ACENTO, _SEM_ACENTO
+    resto = sql.split("WHERE", 1)[1].replace(f"'{_COM_ACENTO}'", "").replace(f"'{_SEM_ACENTO}'", "")
+    assert "'" not in resto.replace("'%", "").replace("%'", "").replace("'S'", "")
     assert ";" not in sql and "--" not in sql and "ROWNUM <= 3" in sql
 
 

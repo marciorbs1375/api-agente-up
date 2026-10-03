@@ -11,6 +11,12 @@ from .sankhya_client import SankhyaClient, SankhyaError
 log = logging.getLogger("agente.sankhya")
 
 
+_PALAVRAS_VAZIAS = {"DE", "DA", "DO", "DAS", "DOS", "E", "COM", "PARA", "P", "C", "EM", "NA", "NO", "UM", "UMA"}
+# Texto fixo do código (nunca vem do cliente). Maiúsculas acentuadas -> sem acento.
+_COM_ACENTO = "ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ"
+_SEM_ACENTO = "AAAAAEEEEIIIIOOOOOUUUUCN"
+
+
 def _digitos(s: str) -> str:
     return re.sub(r"\D", "", s or "")
 
@@ -31,14 +37,19 @@ class SankhyaOps:
     def buscar_produtos(self, texto: str, limite: int) -> list[dict]:
         # Só letras/números (sem acento) entram no SQL: impossível injetar comandos.
         limpo = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode().upper()
-        palavras = [p for p in re.split(r"[^A-Z0-9]+", limpo) if p][:4]
+        palavras = [p for p in re.split(r"[^A-Z0-9]+", limpo) if p]
+        # palavras curtas de ligação não filtram nada ("pano DE chão")
+        uteis = [p for p in palavras if p not in _PALAVRAS_VAZIAS]
+        palavras = (uteis or palavras)[:4]
         if not palavras:
             return []
         limite = max(1, min(int(limite), 20))
         if len(palavras) == 1 and palavras[0].isdigit() and len(palavras[0]) <= 9:
             filtro = f"CODPROD = {int(palavras[0])}"
         else:
-            filtro = "ATIVO = 'S' AND " + " AND ".join(f"UPPER(DESCRPROD) LIKE '%{p}%'" for p in palavras)
+            # Compara sem acento dos dois lados: "CHAO" acha "Chão" e "Chao".
+            desc = f"TRANSLATE(UPPER(DESCRPROD), '{_COM_ACENTO}', '{_SEM_ACENTO}')"
+            filtro = "ATIVO = 'S' AND " + " AND ".join(f"{desc} LIKE '%{p}%'" for p in palavras)
         sql = (
             "SELECT CODPROD, DESCRPROD, CODVOL FROM "
             f"(SELECT CODPROD, DESCRPROD, CODVOL FROM TGFPRO WHERE {filtro} ORDER BY DESCRPROD) "
