@@ -65,6 +65,10 @@ class Estado:
             return None
         return {"conversa": r[0], "cliente": r[1], "dados": json.loads(r[2]), "criado": r[3]}
 
+    def ultimo_orcamento(self, conversa: str):
+        r = self._um("SELECT id FROM orcamento WHERE conversa=? ORDER BY criado DESC LIMIT 1", (conversa,))
+        return r[0] if r else None
+
     # pendência
     def salvar_pendencia(self, conversa: str, tipo: str, resumo: str) -> str:
         pid = "PEN-" + uuid.uuid4().hex[:10].upper()

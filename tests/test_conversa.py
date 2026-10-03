@@ -175,3 +175,54 @@ def test_reiniciar_conversa_zera_memoria(tmp_path):
     r = c.post("/admin/conversa/c1/reiniciar", headers=ADMIN).json()
     assert r["ok"] and r["mensagens_apagadas"] >= 2
     assert c.get("/admin/conversa/c1", headers=ADMIN).json()["mensagens"] == []
+
+
+def _fluxo_fechar(tmp_path, escrita):
+    m = Modelo(uso("t0", "identificar_cliente", {"documento": "10364152000127"}),
+               uso("t1", "montar_orcamento", {"itens": [{"codigo": 1, "quantidade": 2}]}),
+               texto("Segue o orçamento."),
+               uso("t2", "transferir_para_humano", {"motivo": "fechar_pedido", "resumo": "Quer fechar 2 un"}),
+               texto("Registrado, um vendedor vai finalizar."))
+    c, _ = montar(tmp_path, m, escrita_habilitada=escrita)
+    return c, m
+
+
+def test_fechar_grava_orcamento_quando_escrita_ligada(tmp_path, monkeypatch):
+    import tests.test_api as ta
+    gravados = []
+    monkeypatch.setattr(ta.FakeOps, "tipmov_da_top", lambda self, top: {"TIPMOV": "P"}, raising=False)
+    monkeypatch.setattr(ta.FakeOps, "gravar_orcamento",
+                        lambda self, oid, cli, itens, tipmov: gravados.append(oid) or {"nunota": 999}, raising=False)
+    c, m = _fluxo_fechar(tmp_path, True)
+    msg(c, "meu cnpj 10364152000127, quero 2 do produto 1")
+    r = msg(c, "pode fechar")["dados"]
+    assert r["acao"] == "transferir_humano" and r["motivo"] == "fechar_pedido"
+    assert len(gravados) == 1 and "nº 999" in r["resumo"]
+    resultado = json.loads(m.chamadas[-1]["messages"][-1]["content"][0]["content"])
+    assert resultado["orcamento_sankhya"] == 999
+
+
+def test_fechar_nao_grava_com_escrita_desligada(tmp_path, monkeypatch):
+    import tests.test_api as ta
+    gravados = []
+    monkeypatch.setattr(ta.FakeOps, "tipmov_da_top", lambda self, top: {"TIPMOV": "P"}, raising=False)
+    monkeypatch.setattr(ta.FakeOps, "gravar_orcamento",
+                        lambda self, *a: gravados.append(a) or {"nunota": 1}, raising=False)
+    c, m = _fluxo_fechar(tmp_path, False)
+    msg(c, "meu cnpj 10364152000127, quero 2 do produto 1")
+    r = msg(c, "pode fechar")["dados"]
+    assert r["acao"] == "transferir_humano" and not gravados
+    assert "REGISTRADO" not in r["resumo"]
+
+
+def test_falha_na_gravacao_ainda_transfere(tmp_path, monkeypatch):
+    import tests.test_api as ta
+    from app.regras import ErroNegocio
+    monkeypatch.setattr(ta.FakeOps, "tipmov_da_top", lambda self, top: {"TIPMOV": "P"}, raising=False)
+    def quebra(self, *a):
+        raise ErroNegocio("SANKHYA_INDISPONIVEL", "fora")
+    monkeypatch.setattr(ta.FakeOps, "gravar_orcamento", quebra, raising=False)
+    c, m = _fluxo_fechar(tmp_path, True)
+    msg(c, "meu cnpj 10364152000127, quero 2 do produto 1")
+    r = msg(c, "pode fechar")["dados"]
+    assert r["acao"] == "transferir_humano" and "lançar manualmente" in r["resumo"]

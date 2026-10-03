@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from .agente import Agente
 from .config import Config
 from .estado import Estado
-from .orcamento import VALIDADE_ORCAMENTO_DIAS, calcular_orcamento
+from .orcamento import VALIDADE_ORCAMENTO_DIAS, calcular_orcamento, gravar_no_sankhya
 from .regras import (ErroNegocio, Item, conferir_precos, validar_cliente, validar_estoque, validar_itens,
                      validar_total)
 
@@ -174,31 +174,12 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
 
     @app.post("/admin/gravar-orcamento")
     def gravar_orcamento(orcamento_id: str, _=admin):
-        """Grava UM orçamento já montado no Sankhya (TOP de orçamento). Exige ESCRITA_HABILITADA e é feito uma única vez por orçamento."""
+        """Grava UM orçamento já montado no Sankhya (TOP de orçamento). Exige ESCRITA_HABILITADA; uma vez só."""
         def f():
-            if not cfg.escrita_habilitada:
-                raise ErroNegocio("MODO_SOMENTE_LEITURA", "Gravação no Sankhya está desligada.")
-            if estado.desligado():
-                raise ErroNegocio("DESLIGADO", "O agente está desligado.")
-            o = estado.obter_orcamento(orcamento_id)
-            if not o:
-                raise ErroNegocio("ORCAMENTO_NAO_ENCONTRADO", "Orçamento não encontrado.")
-            if agora() - o["dados"]["criado"] > VALIDADE_ORCAMENTO_DIAS * 86400:
-                raise ErroNegocio("ORCAMENTO_VENCIDO", "Orçamento vencido.")
-            chave = f"gravado:{orcamento_id}"
-            if estado.ler_chave(chave):
-                raise ErroNegocio("DUPLICADO", "Esse orçamento já foi gravado. Conferir o número no Sankhya.")
-            top = ops.tipmov_da_top(cfg.top_orcamento)
-            if not top.get("TIPMOV"):
-                raise ErroNegocio("CONFIG_INCOMPLETA", "Não consegui ler a TOP de orçamento.")
-            estado.gravar_chave(chave, "em_andamento")  # trava antes de gravar: em dúvida, nunca repete sozinho
-            try:
-                r = ops.gravar_orcamento(orcamento_id, o["cliente"], o["dados"]["itens"], top["TIPMOV"])
-            except Exception:
-                estado.gravar_chave(chave, "falhou_conferir_no_sankhya")
-                raise
-            estado.gravar_chave(chave, f"NUNOTA={r['nunota']}")
-            return r
+            r = gravar_no_sankhya(cfg, ops, estado, agora(), orcamento_id)
+            if r["ja_gravado"]:
+                raise ErroNegocio("DUPLICADO", f"Esse orçamento já foi gravado (nº {r['nunota']}).")
+            return {"nunota": r["nunota"]}
         return executa("admin.gravar_orcamento", orcamento_id, f)
 
     @app.get("/admin/testar-negociacoes")

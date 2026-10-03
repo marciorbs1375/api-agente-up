@@ -1,6 +1,7 @@
 """Agente conversacional: o modelo conversa e usa as consultas do Sankhya como ferramentas internas.
 
-Somente leitura: nenhuma ferramenta grava no Sankhya. Fechar pedido = passar para um vendedor humano.
+Única escrita: quando o cliente quer fechar e ESCRITA_HABILITADA=true, o último orçamento da conversa é
+registrado na TOP de orçamento do Sankhya. O pedido é sempre finalizado por um vendedor humano.
 """
 import datetime as dt
 import json
@@ -11,7 +12,7 @@ import urllib.error
 import urllib.request
 from typing import Callable
 
-from .orcamento import calcular_orcamento
+from .orcamento import calcular_orcamento, gravar_no_sankhya
 from .prompt import montar_prompt
 from .regras import ErroNegocio, Item, validar_itens
 
@@ -148,11 +149,23 @@ class Agente:
             if nome == "transferir_para_humano":
                 motivo = entrada.get("motivo") if entrada.get("motivo") in MOTIVOS else "fora_do_escopo"
                 resumo = str(entrada.get("resumo", ""))[:1800]
-                if ctx.get("orcamento_id"):
-                    resumo += f" [orçamento {ctx['orcamento_id']}]"
+                oid = ctx.get("orcamento_id") or self.estado.ultimo_orcamento(ctx["conversa"])
+                saida = {"transferido": True}
+                if oid:
+                    resumo += f" [orçamento {oid}]"
+                if motivo == "fechar_pedido" and oid and self.cfg.escrita_habilitada:
+                    try:
+                        g = gravar_no_sankhya(self.cfg, self.ops, self.estado, self.agora(), oid)
+                        resumo += f" [REGISTRADO NO SANKHYA: orçamento nº {g['nunota']} (TOP {self.cfg.top_orcamento}), aguardando o vendedor finalizar]"
+                        saida["orcamento_sankhya"] = g["nunota"]
+                        ctx["nunota"] = g["nunota"]
+                    except ErroNegocio as e:
+                        resumo += f" [NÃO registrado no Sankhya ({e.codigo}): lançar manualmente]"
+                        log.warning("gravacao orcamento %s falhou: %s", oid, e.codigo)
+                ctx["orcamento_id"] = ctx.get("orcamento_id") or oid
                 self.estado.salvar_pendencia(ctx["conversa"], motivo, resumo)
                 ctx["acao"], ctx["motivo"], ctx["resumo"] = "transferir_humano", motivo, resumo
-                return {"transferido": True}
+                return saida
             return {"erro": "FERRAMENTA_DESCONHECIDA"}
         except ErroNegocio as e:
             return {"erro": e.codigo, "mensagem": e.mensagem}
