@@ -6,6 +6,7 @@ registrado na TOP de orçamento do Sankhya. O pedido é sempre finalizado por um
 import datetime as dt
 import json
 import os
+import re
 import logging
 import time
 import urllib.error
@@ -37,6 +38,37 @@ def lojas_confirmadas() -> list[dict]:
         if len(campos) > 1:  # além do nome, tem algo confirmado
             saida.append(campos)
     return saida
+
+
+def _cpf_valido(d: str) -> bool:
+    if len(d) != 11 or d == d[0] * 11:
+        return False
+    for n in (9, 10):
+        soma = sum(int(d[i]) * (n + 1 - i) for i in range(n))
+        if (soma * 10 % 11) % 10 != int(d[n]):
+            return False
+    return True
+
+
+def _cnpj_valido(d: str) -> bool:
+    if len(d) != 14 or d == d[0] * 14:
+        return False
+    for n in (12, 13):
+        pesos = list(range(n - 7, 1, -1)) + list(range(9, 1, -1))
+        soma = sum(int(d[i]) * pesos[i] for i in range(n))
+        dv = 0 if soma % 11 < 2 else 11 - soma % 11
+        if dv != int(d[n]):
+            return False
+    return True
+
+
+def documento_no_texto(texto: str) -> str | None:
+    """CPF/CNPJ válido (dígitos verificadores conferidos) escrito pelo cliente. Telefone não passa no teste."""
+    for bruto in re.findall(r"\d[\d.\-/ ]{9,20}\d", texto or ""):
+        d = re.sub(r"\D", "", bruto)
+        if _cnpj_valido(d) or _cpf_valido(d):
+            return d
+    return None
 
 
 MOTIVOS = ["fechar_pedido", "desconto", "pagamento", "entrega", "troca_devolucao", "reclamacao", "sem_preco",
@@ -124,13 +156,14 @@ class Agente:
                     return {"codigo": cod, "disponivel": 0, "situacao": "sem estoque no momento"}
                 return {"codigo": cod, "disponivel": r.get("disponivel"), "situacao": "em estoque"}
             if nome == "identificar_cliente":
-                doc = entrada.get("documento")
+                # CPF/CNPJ informado pelo cliente sempre vale mais que o telefone do WhatsApp.
+                doc = ctx.get("documento_informado") or documento_no_texto(str(entrada.get("documento") or ""))
                 r = self.ops.identificar_cliente(None if doc else ctx["telefone"], doc)
                 if not r.get("ativo"):
                     raise ErroNegocio("CLIENTE_INATIVO", "Cadastro inativo.")
                 self.estado.gravar_chave(f"cli:{ctx['conversa']}", json.dumps({"codigo": r["codigo_cliente"], "nome": r["nome"]}))
                 ctx["cliente"] = {"codigo": r["codigo_cliente"], "nome": r["nome"]}
-                return {"identificado": True, "nome": r["nome"]}
+                return {"identificado": True, "nome": r["nome"], "por": "documento" if doc else "telefone"}
             if nome in ("consultar_preco", "montar_orcamento"):
                 if not ctx.get("cliente"):
                     raise ErroNegocio("CLIENTE_NAO_IDENTIFICADO", "Identifique o cliente antes.")
@@ -182,9 +215,10 @@ class Agente:
         if not self.cfg.anthropic_api_key:
             raise ErroNegocio("AGENTE_NAO_CONFIGURADO", "O agente de conversa ainda não foi configurado.")
         ctx = {"conversa": conversa, "telefone": telefone, "acao": "responder", "motivo": None, "orcamento_id": None,
-               "cliente": None}
+               "cliente": None, "documento_informado": documento_no_texto(texto)}
         salvo = self.estado.ler_chave(f"cli:{conversa}")
-        if salvo:
+        if salvo and not ctx["documento_informado"]:
+            # cliente mandou CPF/CNPJ agora: identificação anterior (ex.: pelo telefone) não vale mais
             ctx["cliente"] = json.loads(salvo)
         dia = dt.date.fromtimestamp(self.agora()).isoformat()
         espera = "Um momento, vou chamar alguém da equipe para continuar seu atendimento."

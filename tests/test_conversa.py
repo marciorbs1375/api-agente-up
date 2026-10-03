@@ -226,3 +226,37 @@ def test_falha_na_gravacao_ainda_transfere(tmp_path, monkeypatch):
     msg(c, "meu cnpj 10364152000127, quero 2 do produto 1")
     r = msg(c, "pode fechar")["dados"]
     assert r["acao"] == "transferir_humano" and "lançar manualmente" in r["resumo"]
+
+
+def test_documento_no_texto_valida_digitos():
+    from app.agente import documento_no_texto
+    assert documento_no_texto("Meu CNPJ é 10364152000127. Quero 2") == "10364152000127"
+    assert documento_no_texto("cnpj 10.364.152/0001-27") == "10364152000127"
+    assert documento_no_texto("meu telefone 48999930968") is None
+    assert documento_no_texto("pedido 12345678901234") is None
+
+
+def test_cnpj_no_texto_vence_telefone(tmp_path, monkeypatch):
+    import tests.test_api as ta
+    chamadas = []
+    def ident(self, tel, doc):
+        chamadas.append((tel, doc))
+        return {"codigo_cliente": 1417 if doc else 9999, "nome": "LINCE" if doc else "OUTRO", "ativo": True}
+    monkeypatch.setattr(ta.FakeOps, "identificar_cliente", ident)
+    m = Modelo(uso("t0", "identificar_cliente", {}), texto("Oi"),
+               uso("t1", "identificar_cliente", {}), texto("Achei a LINCE"))
+    c, _ = montar(tmp_path, m)
+    msg(c, "oi")  # sem documento: usa telefone
+    msg(c, "Meu CNPJ é 10364152000127. Quero orçamento")
+    assert chamadas[0][1] is None and chamadas[0][0]
+    assert chamadas[1] == (None, "10364152000127")
+
+
+def test_cnpj_novo_exige_reidentificar_antes_do_preco(tmp_path):
+    m = Modelo(uso("t0", "identificar_cliente", {}), texto("Oi"),
+               uso("t1", "montar_orcamento", {"itens": [{"codigo": 1, "quantidade": 2}]}), texto("..."))
+    c, _ = montar(tmp_path, m)
+    msg(c, "oi")
+    msg(c, "Meu CNPJ é 10364152000127. Quero 2 do produto 1")
+    resultado = json.loads(m.chamadas[-1]["messages"][-1]["content"][0]["content"])
+    assert resultado["erro"] == "CLIENTE_NAO_IDENTIFICADO"
