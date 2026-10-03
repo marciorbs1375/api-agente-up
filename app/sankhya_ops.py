@@ -50,17 +50,37 @@ class SankhyaOps:
             # Compara sem acento dos dois lados: "CHAO" acha "Chão" e "Chao".
             desc = f"TRANSLATE(UPPER(DESCRPROD), '{_COM_ACENTO}', '{_SEM_ACENTO}')"
             filtro = "ATIVO = 'S' AND " + " AND ".join(f"{desc} LIKE '%{p}%'" for p in palavras)
+        emp = int(getattr(self.cfg, "empresa_padrao", 2) or 2)
+        # 1ª tentativa: quem tem saldo na empresa vem primeiro (saldo aproximado, só para ordenar).
+        sql_saldo = (
+            "SELECT CODPROD, DESCRPROD, CODVOL, SALDO FROM "
+            "(SELECT P.CODPROD, P.DESCRPROD, P.CODVOL, "
+            f"NVL((SELECT SUM(E.ESTOQUE - NVL(E.RESERVADO, 0)) FROM TGFEST E WHERE E.CODPROD = P.CODPROD AND E.CODEMP = {emp}), 0) AS SALDO "
+            f"FROM TGFPRO P WHERE {filtro.replace('DESCRPROD', 'P.DESCRPROD').replace('ATIVO', 'P.ATIVO').replace('CODPROD =', 'P.CODPROD =')} "
+            "ORDER BY CASE WHEN NVL((SELECT SUM(E2.ESTOQUE - NVL(E2.RESERVADO, 0)) FROM TGFEST E2 "
+            f"WHERE E2.CODPROD = P.CODPROD AND E2.CODEMP = {emp}), 0) > 0 THEN 0 ELSE 1 END, P.DESCRPROD) "
+            f"WHERE ROWNUM <= {limite}"
+        )
         sql = (
             "SELECT CODPROD, DESCRPROD, CODVOL FROM "
             f"(SELECT CODPROD, DESCRPROD, CODVOL FROM TGFPRO WHERE {filtro} ORDER BY DESCRPROD) "
             f"WHERE ROWNUM <= {limite}"
         )
         try:
-            linhas = self.c.select_fixo(sql)
+            try:
+                linhas = self.c.select_fixo(sql_saldo)
+            except SankhyaError as e:
+                log.warning("busca com saldo falhou, usando busca simples: %s", str(e)[:200])
+                linhas = self.c.select_fixo(sql)
         except SankhyaError as e:
             self._traduz(e)
-        return [{"codigo": int(r["CODPROD"]), "descricao": r["DESCRPROD"], "unidade": r.get("CODVOL")}
-                for r in linhas]
+        out = []
+        for r in linhas:
+            item = {"codigo": int(r["CODPROD"]), "descricao": r["DESCRPROD"], "unidade": r.get("CODVOL")}
+            if "SALDO" in r and r["SALDO"] is not None:
+                item["em_estoque"] = float(r["SALDO"]) > 0
+            out.append(item)
+        return out
 
     def estoque(self, codigo: int, empresa: int) -> dict:
         try:

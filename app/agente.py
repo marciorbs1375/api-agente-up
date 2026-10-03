@@ -89,7 +89,7 @@ class Agente:
     def _ferramenta(self, nome: str, entrada: dict, ctx: dict) -> dict:
         try:
             if nome == "buscar_produtos":
-                itens = self.ops.buscar_produtos(str(entrada.get("texto", ""))[:80], 5)
+                itens = self.ops.buscar_produtos(str(entrada.get("texto", ""))[:80], 10)
                 if not itens:
                     raise ErroNegocio("PRODUTO_NAO_ENCONTRADO", "Nenhum produto encontrado.")
                 return {"produtos": itens}
