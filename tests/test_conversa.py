@@ -83,6 +83,7 @@ def test_transferir_para_humano_registra_pendencia(tmp_path):
     c, _ = montar(tmp_path, m)
     r = msg(c, "pode fechar")["dados"]
     assert r["acao"] == "transferir_humano" and r["motivo"] == "fechar_pedido"
+    assert r["resumo"].startswith("Cliente quer 2 un")
 
 
 def test_historico_continua_na_mesma_conversa(tmp_path):

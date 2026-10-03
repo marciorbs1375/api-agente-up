@@ -71,6 +71,7 @@ class DadosConversa(BaseModel):
     acao: str = Field(description="'responder' = envie a resposta; 'transferir_humano' = envie a resposta e passe a conversa para uma pessoa.")
     motivo: str | None = Field(default=None, description="Motivo da transferência (ex.: fechar_pedido, sem_preco, desconto, pediu_humano, erro_sistema).")
     orcamento_id: str | None = Field(default=None, description="Número do orçamento montado nesta resposta, se houver.")
+    resumo: str | None = Field(default=None, description="Só na transferência: resumo para o vendedor (cliente, itens, orçamento e o que o cliente pediu). Mostrar à equipe, nunca ao cliente.")
 
 
 class ErroApi(BaseModel):

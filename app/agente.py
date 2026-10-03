@@ -126,7 +126,7 @@ class Agente:
                 if ctx.get("orcamento_id"):
                     resumo += f" [orçamento {ctx['orcamento_id']}]"
                 self.estado.salvar_pendencia(ctx["conversa"], motivo, resumo)
-                ctx["acao"], ctx["motivo"] = "transferir_humano", motivo
+                ctx["acao"], ctx["motivo"], ctx["resumo"] = "transferir_humano", motivo, resumo
                 return {"transferido": True}
             return {"erro": "FERRAMENTA_DESCONHECIDA"}
         except ErroNegocio as e:
@@ -137,7 +137,8 @@ class Agente:
     # ---------- conversa ----------
     def _transferir(self, ctx: dict, motivo: str, resumo: str, resposta: str) -> dict:
         self.estado.salvar_pendencia(ctx["conversa"], motivo, resumo)
-        return {"resposta": resposta, "acao": "transferir_humano", "motivo": motivo, "orcamento_id": ctx.get("orcamento_id")}
+        return {"resposta": resposta, "acao": "transferir_humano", "motivo": motivo,
+                "orcamento_id": ctx.get("orcamento_id"), "resumo": resumo[:1800]}
 
     def conversar(self, conversa: str, texto: str, telefone: str | None, nome: str | None) -> dict:
         if not self.cfg.anthropic_api_key:
@@ -180,4 +181,5 @@ class Agente:
         if not resposta:
             return self._transferir(ctx, "erro_sistema", f"Agente sem resposta. Última msg: {texto[:300]}", espera)
         self.estado.adicionar_mensagens(conversa, novas)
-        return {"resposta": resposta, "acao": ctx["acao"], "motivo": ctx["motivo"], "orcamento_id": ctx["orcamento_id"]}
+        return {"resposta": resposta, "acao": ctx["acao"], "motivo": ctx["motivo"], "orcamento_id": ctx["orcamento_id"],
+                "resumo": ctx.get("resumo") if ctx["acao"] == "transferir_humano" else None}
