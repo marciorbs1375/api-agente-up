@@ -144,7 +144,7 @@ class Agente:
                 return {k: r[k] for k in ("orcamento_id", "validade_dias", "total", "itens")}
             if nome == "informacoes_lojas":
                 return {"lojas": lojas_confirmadas(),
-                        "aviso": "Informe só os campos presentes. Em feriados o horário pode mudar: avise isso ao informar horário. Se o que o cliente pediu não estiver aqui, passe para um vendedor."}
+                        "aviso": "Informe só os campos presentes. Chame o número só de \"telefone\"; só diga que é WhatsApp se o campo whatsapp estiver presente. Em feriados o horário pode mudar: avise isso ao informar horário. Se o que o cliente pediu não estiver aqui, passe para um vendedor."}
             if nome == "transferir_para_humano":
                 motivo = entrada.get("motivo") if entrada.get("motivo") in MOTIVOS else "fora_do_escopo"
                 resumo = str(entrada.get("resumo", ""))[:1800]
