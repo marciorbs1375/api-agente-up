@@ -198,6 +198,8 @@ class SankhyaOps:
                                      "OR UPPER(APELIDO) LIKE '%SITE%') AND ROWNUM <= 20",
             "clientes_com_tabela": "SELECT CODPARC, CODTAB, CGC_CPF FROM TGFPAR WHERE CLIENTE = 'S' AND ATIVO = 'S' "
                                    "AND CODTAB > 0 AND LENGTH(CGC_CPF) = 14 AND ROWNUM <= 8",  # só CNPJ, nunca CPF
+            "clientes_sem_tabela": "SELECT CODPARC, CODTAB, CGC_CPF FROM TGFPAR WHERE CLIENTE = 'S' AND ATIVO = 'S' "
+                                   "AND NVL(CODTAB, 0) = 0 AND LENGTH(CGC_CPF) = 14 AND ROWNUM <= 8",  # só CNPJ
             "vendedores_amostra": "SELECT CODVEND, APELIDO FROM TGFVEN WHERE ATIVO = 'S' AND ROWNUM <= 25",
         }
         for nome, sql in consultas.items():
