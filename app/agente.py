@@ -4,6 +4,7 @@ Somente leitura: nenhuma ferramenta grava no Sankhya. Fechar pedido = passar par
 """
 import datetime as dt
 import json
+import os
 import logging
 import time
 import urllib.error
@@ -19,12 +20,30 @@ log = logging.getLogger("agente.conversa")
 API_URL = "https://api.anthropic.com/v1/messages"
 MAX_RODADAS = 6
 JANELA_HISTORICO = 48 * 3600
+_LOJAS_ARQ = os.path.join(os.path.dirname(__file__), "lojas.json")
+
+
+def lojas_confirmadas() -> list[dict]:
+    """Lê app/lojas.json e devolve só os campos preenchidos (confirmados)."""
+    try:
+        with open(_LOJAS_ARQ, encoding="utf-8") as f:
+            dados = json.load(f)
+    except (OSError, ValueError):
+        return []
+    saida = []
+    for loja in dados.get("lojas", []):
+        campos = {k: v for k, v in loja.items() if v not in (None, "")}
+        if len(campos) > 1:  # além do nome, tem algo confirmado
+            saida.append(campos)
+    return saida
+
+
 MOTIVOS = ["fechar_pedido", "desconto", "pagamento", "entrega", "troca_devolucao", "reclamacao", "sem_preco",
            "cliente_nao_cadastrado", "pediu_humano", "fora_do_escopo", "erro_sistema"]
 
 FERRAMENTAS = [
     {"name": "buscar_produtos",
-     "description": "Busca produtos ativos pelo nome (ou pelo código numérico). Devolve até 5 opções.",
+     "description": "Busca produtos ativos pelo nome (ou pelo código numérico). Devolve até 10 opções, com indicação aproximada de estoque.",
      "input_schema": {"type": "object", "properties": {"texto": {"type": "string"}}, "required": ["texto"]}},
     {"name": "consultar_estoque",
      "description": "Consulta o estoque disponível agora de um produto.",
@@ -44,6 +63,9 @@ FERRAMENTAS = [
      "input_schema": {"type": "object", "properties": {"itens": {"type": "array", "items": {
          "type": "object", "properties": {"codigo": {"type": "integer"}, "quantidade": {"type": "number"}},
          "required": ["codigo", "quantidade"]}}}, "required": ["itens"]}},
+    {"name": "informacoes_lojas",
+     "description": "Endereço, telefone, WhatsApp e horário das lojas da UP. Só traz o que foi confirmado; o que não vier, não informe.",
+     "input_schema": {"type": "object", "properties": {}}},
     {"name": "transferir_para_humano",
      "description": "Passa o atendimento para um vendedor humano, com um resumo para ele continuar.",
      "input_schema": {"type": "object", "properties": {
@@ -120,6 +142,9 @@ class Agente:
                                        ctx["cliente"]["codigo"], entradas)
                 ctx["orcamento_id"] = r["orcamento_id"]
                 return {k: r[k] for k in ("orcamento_id", "validade_dias", "total", "itens")}
+            if nome == "informacoes_lojas":
+                return {"lojas": lojas_confirmadas(),
+                        "aviso": "Informe só os campos presentes. Se o que o cliente pediu não estiver aqui, passe para um vendedor."}
             if nome == "transferir_para_humano":
                 motivo = entrada.get("motivo") if entrada.get("motivo") in MOTIVOS else "fora_do_escopo"
                 resumo = str(entrada.get("resumo", ""))[:1800]

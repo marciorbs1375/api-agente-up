@@ -146,3 +146,20 @@ def test_admin_ve_conversa_e_pendencias(tmp_path):
     pend = c.get("/admin/pendencias", headers=AD).json()["pendencias"]
     assert pend[0]["tipo"] == "desconto"
     assert c.get("/admin/pendencias", headers=AG).status_code == 401
+
+
+def test_lojas_so_campos_confirmados(tmp_path, monkeypatch):
+    import app.agente as ag
+    arq = tmp_path / "lojas.json"
+    arq.write_text(json.dumps({"lojas": [
+        {"nome": "Loja A", "endereco": "Rua X, 1", "telefone": None, "horario_semana": ""},
+        {"nome": "Loja B", "endereco": None, "telefone": None}]}), encoding="utf-8")
+    monkeypatch.setattr(ag, "_LOJAS_ARQ", str(arq))
+    r = ag.lojas_confirmadas()
+    assert r == [{"nome": "Loja A", "endereco": "Rua X, 1"}]
+
+
+def test_lojas_arquivo_real_sem_dado_inventado():
+    import app.agente as ag
+    for loja in ag.lojas_confirmadas():
+        assert "nome" in loja

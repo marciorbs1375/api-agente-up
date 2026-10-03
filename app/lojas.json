@@ -1,0 +1,10 @@
+{
+  "_leia": "Só preencha o que foi CONFIRMADO pela UP. Campo null = o agente não informa e passa para um vendedor.",
+  "lojas": [
+    {"nome": "UP Coqueiros", "endereco": null, "telefone": null, "whatsapp": null, "horario_semana": null, "horario_sabado": null, "horario_domingo": null},
+    {"nome": "UP Palhoça (Shopping ViaCatarina)", "endereco": null, "telefone": null, "whatsapp": null, "horario_semana": null, "horario_sabado": null, "horario_domingo": null},
+    {"nome": "UP Santo Amaro da Imperatriz", "endereco": null, "telefone": null, "whatsapp": null, "horario_semana": null, "horario_sabado": null, "horario_domingo": null},
+    {"nome": "UP Atacado", "endereco": null, "telefone": null, "whatsapp": null, "horario_semana": null, "horario_sabado": null, "horario_domingo": null},
+    {"nome": "UP Corporativo", "endereco": null, "telefone": null, "whatsapp": null, "horario_semana": null, "horario_sabado": null, "horario_domingo": null}
+  ]
+}
