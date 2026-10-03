@@ -173,10 +173,17 @@ def create_app(cfg: Config, ops, estado: Estado, agora: Callable[[], float] = ti
         """Somente leitura: como a TOP de orçamento está configurada (tipo de movimento, estoque, financeiro)."""
         return {"ok": True, "top": ops.tipmov_da_top(top or cfg.top_orcamento)}
 
+    def com_detalhe(r: dict) -> dict:
+        """Só em rotas admin: anexa a mensagem do Sankhya quando a consulta falha (diagnóstico)."""
+        if not r["ok"] and getattr(ops, "ultimo_erro", None):
+            r["erro"]["detalhe_sankhya"] = str(ops.ultimo_erro)[:500]
+        return r
+
     @app.get("/admin/nota/{nunota}")
     def ver_nota(nunota: int, _=admin):
         """Somente leitura: confere no Sankhya o que foi gravado (cabeçalho e itens)."""
-        return executa("admin.ver_nota", f"nota-{nunota}", lambda: ops.ver_nota(nunota))
+        ops.ultimo_erro = None
+        return com_detalhe(executa("admin.ver_nota", f"nota-{nunota}", lambda: ops.ver_nota(nunota)))
 
     @app.post("/admin/gravar-orcamento")
     def gravar_orcamento(orcamento_id: str, _=admin):
